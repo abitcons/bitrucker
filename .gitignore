@@ -1,5 +1,11 @@
 # Freqtrade rules
 config*.json
+# Explicitly ignore the live config (contains real Binance API keys) and local helper scripts/logs
+user_data/config.json
+_*.ps1
+_*.log
+_*.txt
+cloudflared-config.yml
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
