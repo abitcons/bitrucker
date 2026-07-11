@@ -1,0 +1,120 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BitRucker Bots{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='saas.css', v='20260627-22') }}">
+</head>
+<body>
+    <div class="app-backdrop" aria-hidden="true"></div>
+    <div class="app-shell" data-bitr-shell="true">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="4" width="20" height="24" rx="4" fill="currentColor" opacity="0.9"/>
+            <text x="16" y="22" font-size="18" font-weight="900" text-anchor="middle" fill="white" font-family="serif">B</text>
+            <rect x="11" y="2" width="2.5" height="28" rx="1" fill="white"/>
+            <rect x="18.5" y="2" width="2.5" height="28" rx="1" fill="white"/>
+          </svg>
+        </span>
+        <div>
+          <strong>BitRucker</strong>
+          <small>Bot investments</small>
+        </div>
+      </div>
+      <nav class="nav-menu">
+        <a class="{{ 'active' if active_page == 'overview' else '' }}" href="{{ url_for('saas_home') }}">Overview</a>
+        <a class="{{ 'active' if active_page == 'bots' else '' }}" href="{{ url_for('saas_bots') }}">Bot Marketplace</a>
+        <a class="{{ 'active' if active_page == 'settings' else '' }}" href="{{ url_for('saas_settings') }}">Exchange Setup</a>
+        <a class="{{ 'active' if active_page == 'security' else '' }}" href="{{ url_for('saas_security') }}">Security</a>
+        <a class="{{ 'active' if active_page == 'billing' else '' }}" href="{{ url_for('saas_billing') }}">Billing</a>
+        {% if user and (user.role == 'admin' or user.is_owner) %}
+          <a class="{{ 'active' if active_page == 'readiness' else '' }}" href="{{ url_for('market_readiness') }}">Launch Readiness</a>
+          <a class="{{ 'active' if active_page == 'admin' else '' }}" href="{{ url_for('admin_subscriptions') }}">Admin</a>
+        {% endif %}
+      </nav>
+      <div class="sidebar-card">
+        <span class="label">Plan</span>
+        <strong>{{ subscription.label }}</strong>
+        <small>{{ monthly_price_usdt() }} USDT / month</small>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="ghost-button" type="submit">Sign out</button>
+      </form>
+    </aside>
+    <main class="main-panel">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">Investor Console</span>
+          <h1>{% block heading %}BitRucker Bots{% endblock %}</h1>
+        </div>
+        <div class="account-pill">
+          <span>{{ user.email if user else '' }}</span>
+          <strong>{{ subscription.state|replace('_', ' ')|upper }}</strong>
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <section class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <footer style="padding:16px;text-align:center;color:var(--muted);font-size:.82rem;">
+    <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('risk_disclosure') }}">Risk Disclosure</a>
+  </footer>
+  <script>
+    (() => {
+      const keep = new Set(['SCRIPT', 'STYLE', 'LINK', 'NOSCRIPT']);
+      const suspiciousSelector = [
+        'iframe',
+        'object',
+        'embed',
+        'dialog',
+        '[popover]',
+        '[style*="position: fixed"]',
+        '[style*="position:fixed"]',
+        '[style*="z-index: 214748"]',
+        '[style*="z-index:214748"]'
+      ].join(',');
+
+      const isAppNode = (node, shell, backdrop) => node === shell || node === backdrop || shell?.contains(node);
+
+      const removeSuspicious = (shell, backdrop) => {
+        for (const node of Array.from(document.querySelectorAll(suspiciousSelector))) {
+          if (isAppNode(node, shell, backdrop) || keep.has(node.tagName)) continue;
+          node.remove();
+        }
+        for (const node of Array.from(document.documentElement.children)) {
+          if (node === document.head || node === document.body || keep.has(node.tagName)) continue;
+          node.remove();
+        }
+      };
+
+      const quarantine = () => {
+        const shell = document.querySelector('.app-shell');
+        const backdrop = document.querySelector('.app-backdrop');
+        for (const node of Array.from(document.body.children)) {
+          if (node === shell || node === backdrop || keep.has(node.tagName)) continue;
+          node.remove();
+        }
+        removeSuspicious(shell, backdrop);
+      };
+      quarantine();
+      new MutationObserver(quarantine).observe(document.documentElement, { childList: true, subtree: true });
+      window.addEventListener('pageshow', quarantine);
+      window.setInterval(quarantine, 1500);
+    })();
+  </script>
+</body>
+</html>

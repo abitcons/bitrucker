@@ -1,0 +1,25 @@
+﻿{% extends "saas_base.html" %}
+{% block title %}Bots | BitRucker{% endblock %}
+{% block heading %}Bot Marketplace{% endblock %}
+{% block content %}
+<section class="bot-grid">
+  <article class="bot-card">
+    <div class="panel-headline">
+      <div><span class="eyebrow">Live</span><h2>Swing Bot</h2></div>
+      <span class="status-chip {{ 'live' if subscription.can_trade else 'locked' }}">{{ subscription.label }}</span>
+    </div>
+    <p>RSI-aware spot strategy with native TWAP entries, target sell management, candidate ranking, and account-level risk controls.</p>
+    <ul class="feature-list">
+      <li>Selected-pair recommendations</li>
+      <li>Binance whitelist IP guidance</li>
+      <li>Trial and subscription gating</li>
+      <li>Manual stop and close-all controls</li>
+    </ul>
+    <a class="primary-button" href="{{ url_for('saas_swing_bot') }}">Open Swing Bot</a>
+  </article>
+  <article class="bot-card muted-card">
+    <div class="panel-headline"><div><span class="eyebrow">Coming soon</span><h2>Portfolio Guard</h2></div></div>
+    <p>Subscription-only account liquidation and portfolio allocation automation for larger investor accounts.</p>
+  </article>
+</section>
+{% endblock %}

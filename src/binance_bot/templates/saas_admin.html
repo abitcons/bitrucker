@@ -1,0 +1,51 @@
+﻿{% extends "saas_base.html" %}
+{% block title %}Admin | BitRucker{% endblock %}
+{% block heading %}Subscriptions Admin{% endblock %}
+{% block content %}
+<section class="panel-card wide">
+  <span class="eyebrow">Users</span>
+  <table class="data-table">
+    <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Credentials</th><th>Trial ends</th><th>Subscription ends</th></tr></thead>
+    <tbody>
+      {% for item in users %}
+        <tr>
+          <td>{{ item.email }}</td>
+          <td>{{ item.role }}</td>
+          <td>{{ item.subscription.label }}</td>
+          <td>{{ 'Yes' if item.has_credentials else 'No' }}</td>
+          <td>{{ item.trial_ends_at or '-' }}</td>
+          <td>{{ item.subscription_expires_at or '-' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+<section class="panel-card wide">
+  <span class="eyebrow">Invoices</span>
+  <table class="data-table">
+    <thead><tr><th>Reference</th><th>User</th><th>Amount</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for invoice in invoices %}
+        <tr>
+          <td>{{ invoice.reference }}</td>
+          <td>{{ invoice.email }}</td>
+          <td>{{ invoice.amount_usdt }} {{ invoice.network }}</td>
+          <td>{{ invoice.status }}</td>
+          <td>{{ invoice.created_at }}</td>
+          <td>
+            {% if invoice.status != 'paid' %}
+              <form method="post" action="{{ url_for('admin_approve_invoice', invoice_id=invoice.id) }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input name="tx_hash" placeholder="verified tx hash / provider reference" minlength="8" required>
+                <button class="secondary-button" type="submit">Approve</button>
+              </form>
+            {% else %}
+              Paid
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "saas_base.html" %}
+{% block title %}Exchange Connections | BitRucker{% endblock %}
+{% block heading %}Exchange Connections{% endblock %}
+{% block content %}
+<section class="content-grid">
+  <article class="panel-card">
+    <span class="eyebrow">IP ALLOWLIST</span>
+    <h2>{{ outbound_ip }}</h2>
+    <p>Add this server IP to every exchange API-key allowlist. Use read + spot-trade permissions only; disable withdrawal and transfer permissions.</p>
+  </article>
+  <article class="panel-card wide">
+    <span class="eyebrow">EXECUTION SAFETY</span>
+    <h2>Read-only validation before storage</h2>
+    <p>BitRucker checks key permissions and IP restrictions without placing an order. Keys with withdrawal, transfer, missing spot-trade, or missing IP restrictions are rejected.</p>
+    <p class="status-chip locked">Customer live execution remains disabled until tenant isolation is complete. Saving a key does not activate the current owner fleet.</p>
+  </article>
+</section>
+
+{% if connections %}
+<section class="panel-card wide" style="margin-top:16px;">
+  <span class="eyebrow">CONNECTED ACCOUNTS</span>
+  {% for connection in connections %}
+    <div style="padding:14px 0;border-bottom:1px solid var(--line);">
+      <h2>{{ connection.exchange|upper }} · {{ connection.masked_key }}</h2>
+      <p class="status-chip {{ 'live' if connection.validation_status == 'verified_safe' else 'locked' }}">{{ connection.validation_status|replace('_', ' ')|upper }}</p>
+      <p>{{ connection.label }} · Last validation {{ connection.last_validated_at or 'not verified' }}</p>
+      {% if connection.validation.warnings %}<p class="muted">Warnings: {{ connection.validation.warnings|join('; ') }}</p>{% endif %}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('saas_validate_exchange_credentials', exchange=connection.exchange) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="secondary-button" type="submit">Revalidate safely</button>
+        </form>
+        <details>
+          <summary class="secondary-button" style="cursor:pointer;">Delete connection</summary>
+          <form method="post" action="{{ url_for('saas_delete_exchange_credentials', exchange=connection.exchange) }}" class="form-stack" style="margin-top:10px;max-width:420px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+            {% if user.mfa_enabled_at %}<label>MFA/recovery code<input name="code" autocomplete="one-time-code" required></label>{% endif %}
+            <button class="secondary-button" type="submit">Delete and revoke locally</button>
+          </form>
+        </details>
+      </div>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="content-grid" style="margin-top:16px;">
+  <article class="panel-card wide">
+    <span class="eyebrow">BINANCE</span>
+    <h2>Connect trade-only Binance API</h2>
+    <form method="post" action="{{ url_for('saas_save_binance_credentials') }}" class="form-stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="exchange" value="binance">
+      <label>Label<input name="label" value="Binance Spot" required></label>
+      <label>API key<input name="api_key" autocomplete="off" required></label>
+      <label>API secret<input name="api_secret" type="password" autocomplete="new-password" required></label>
+      <button class="primary-button" type="submit">Validate and save encrypted key</button>
+    </form>
+  </article>
+
+  <article class="panel-card wide">
+    <span class="eyebrow">BITGET</span>
+    <h2>Connect trade-only Bitget API</h2>
+    <form method="post" action="{{ url_for('saas_save_binance_credentials') }}" class="form-stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="exchange" value="bitget">
+      <label>Label<input name="label" value="Bitget Spot" required></label>
+      <label>API key<input name="api_key" autocomplete="off" required></label>
+      <label>API secret<input name="api_secret" type="password" autocomplete="new-password" required></label>
+      <label>API passphrase<input name="passphrase" type="password" autocomplete="new-password" required></label>
+      <button class="primary-button" type="submit">Validate and save encrypted key</button>
+    </form>
+    <p class="muted">Reality tokenized-stock automation additionally requires a Bitget UTA account and a UID whitelisted for the dedicated Reality order API.</p>
+  </article>
+</section>
+{% endblock %}

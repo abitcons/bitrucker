@@ -1,0 +1,69 @@
+{% extends "saas_base.html" %}
+{% block title %}Launch Readiness | BitRucker{% endblock %}
+{% block heading %}Launch Readiness{% endblock %}
+{% block content %}
+<section class="content-grid">
+  <article class="panel-card">
+    <span class="eyebrow">MARKET GATE</span>
+    <h2>{{ readiness.score }}/100</h2>
+    <p class="status-chip {{ 'live' if readiness.ready else 'locked' }}">{{ 'READY' if readiness.ready else 'NOT READY' }}</p>
+    <p>{{ readiness.critical_failure_count }} critical launch blocker{{ '' if readiness.critical_failure_count == 1 else 's' }}.</p>
+    <p class="muted">A working development bot is not the same as a safe multi-customer financial product. This gate fails closed.</p>
+  </article>
+  <article class="panel-card wide">
+    <span class="eyebrow">CRITICAL BLOCKERS</span>
+    {% if readiness.critical_failures %}
+      {% for check in readiness.critical_failures %}
+        <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+          <strong>{{ check.label }}</strong>
+          <p>{{ check.detail }}</p>
+          <p class="muted">Required: {{ check.remediation }}</p>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p>No critical blockers reported by the automated gate. Complete legal, security, and operational sign-off before launch.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-card wide" style="margin-top:16px;">
+  <span class="eyebrow">FULL SCORECARD</span>
+  <table class="data-table">
+    <thead><tr><th>Category</th><th>Control</th><th>Status</th><th>Finding</th><th>Next action</th></tr></thead>
+    <tbody>
+      {% for check in readiness.checks %}
+        <tr>
+          <td>{{ check.category }}</td>
+          <td><strong>{{ check.label }}</strong>{% if check.critical %}<br><small>CRITICAL</small>{% endif %}</td>
+          <td><span class="status-chip {{ 'live' if check.status == 'pass' else 'locked' if check.status == 'fail' else '' }}">{{ check.status|upper }}</span></td>
+          <td>{{ check.detail }}</td>
+          <td>{{ check.remediation or '-' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel-card wide" style="margin-top:16px;">
+  <span class="eyebrow">RECENT SECURITY & TRADING AUDIT</span>
+  {% if audit_events %}
+  <table class="data-table">
+    <thead><tr><th>Time</th><th>Actor</th><th>Event</th><th>Target</th><th>Outcome</th><th>Request</th></tr></thead>
+    <tbody>
+      {% for event in audit_events %}
+        <tr>
+          <td>{{ event.created_at[:19] }}</td>
+          <td>{{ event.email or 'service/local' }}</td>
+          <td>{{ event.event_type }}</td>
+          <td>{{ event.target or '-' }}</td>
+          <td>{{ event.outcome|upper }}</td>
+          <td><code>{{ event.request_id[:12] }}</code></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No audited actions recorded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

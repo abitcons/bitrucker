@@ -1,0 +1,542 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asset Control Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+</head>
+<body data-refresh-seconds="15">
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Binance Spot Desk</p>
+        <h1>Asset Control Room</h1>
+        <p class="lede">Monitor live portfolio value, manage native TWAP cycles for BTC, ETH, and PAXG, and control pause or sell actions from one place.</p>
+        <div class="hero-actions">
+          {% if view.can_sell_all %}
+            <form method="post" action="{{ url_for('sell_all_assets') }}" class="action-form" data-confirm="Sell every sellable non-USDT asset into USDT now? Managed TWAP restarts will be skipped for this action.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="sell-all-button">Sell All to USDT</button>
+            </form>
+          {% else %}
+            <span class="pill pill-disabled">No global sell action</span>
+          {% endif %}
+          <p class="hero-action-note">This control flattens sellable non-USDT assets and does not restart managed TWAP cycles.</p>
+        </div>
+      </div>
+      <div class="hero-panel">
+        <div class="mode-chip {{ 'chip-live' if not view.dry_run else 'chip-dry' }}">{{ 'LIVE TRADING' if not view.dry_run else 'DRY RUN' }}</div>
+        <div class="hero-metric">
+          <span>Updated</span>
+          <strong>{{ view.generated_at }}</strong>
+        </div>
+        <div class="hero-metric">
+          <span>Refresh</span>
+          <strong><span id="refresh-countdown">15</span>s</strong>
+        </div>
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <section class="flash-stack">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </section>
+      {% endif %}
+    {% endwith %}
+
+    {% if view.warnings %}
+      <section class="warning-panel">
+        <h2>Attention</h2>
+        {% for warning in view.warnings %}
+          <p>{{ warning }}</p>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <section class="summary-grid">
+      <article class="summary-card">
+        <span class="label">Portfolio Value</span>
+        <strong>${{ view.total_value_display }}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="label">Managed PnL</span>
+        <strong class="{{ view.managed_profit_class }}">${{ view.managed_profit_display }}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="label">Managed Cycles</span>
+        <strong>{{ view.active_cycle_count }}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="label">Whole Strategy Trigger</span>
+        <strong>${{ view.profit_target_display }}</strong>
+      </article>
+    </section>
+
+    <section class="panel whole-target-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Strategy Trigger</p>
+          <h2>Whole Strategy Profit Trigger</h2>
+        </div>
+        <span class="pill {{ view.profit_target_source_class }}">{{ view.profit_target_source_label }}</span>
+      </div>
+      <div class="portfolio-target-grid">
+        <div class="portfolio-target-copy">
+          <p class="portfolio-target-note">{{ view.profit_target_note }}</p>
+          <dl class="cycle-stats portfolio-target-stats">
+            <div>
+              <dt>Active Trigger</dt>
+              <dd>${{ view.profit_target_display }}</dd>
+            </div>
+            <div>
+              <dt>Config Default</dt>
+              <dd>${{ view.profit_target_default_display }}</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>{{ view.profit_target_updated_at }}</dd>
+            </div>
+            <div>
+              <dt>Managed PnL</dt>
+              <dd class="{{ view.managed_profit_class }}">${{ view.managed_profit_display }}</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="portfolio-target-actions">
+          <form method="post" action="{{ url_for('set_profit_target') }}" class="portfolio-target-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="portfolio-target-label" for="profit_target_value">Whole Strategy Profit in USD</label>
+            <input id="profit_target_value" name="target_value" type="number" step="0.01" min="0.01" required class="portfolio-target-input" value="{{ view.profit_target_input_value }}" placeholder="Enter profit trigger">
+            <button type="submit" class="target-button">Update Trigger</button>
+          </form>
+          {% if view.can_clear_profit_target %}
+            <form method="post" action="{{ url_for('clear_profit_target') }}" class="action-form" data-confirm="Reset the whole strategy profit trigger to the strategy.json default?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="clear-button">Reset to Default</button>
+            </form>
+          {% else %}
+            <span class="pill pill-disabled">Using strategy.json default</span>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel portfolio-target-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Portfolio Guard</p>
+          <h2>Portfolio Value Liquidation Trigger</h2>
+        </div>
+        <span class="pill {{ view.portfolio_value_target_status_class }}">{{ view.portfolio_value_target_status_label }}</span>
+      </div>
+      <div class="portfolio-target-grid">
+        <div class="portfolio-target-copy">
+          <p class="portfolio-target-note">{{ view.portfolio_value_target_note }}</p>
+          <dl class="cycle-stats portfolio-target-stats">
+            <div>
+              <dt>Current Portfolio</dt>
+              <dd>${{ view.total_value_display }}</dd>
+            </div>
+            <div>
+              <dt>Liquidation Target</dt>
+              <dd>{% if view.portfolio_value_target_display == '-' %}-{% else %}${{ view.portfolio_value_target_display }}{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>{{ view.portfolio_value_target_updated_at }}</dd>
+            </div>
+            <div>
+              <dt>Triggered</dt>
+              <dd>{{ view.portfolio_value_target_triggered_at }}</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="portfolio-target-actions">
+          <form method="post" action="{{ url_for('set_portfolio_target') }}" class="portfolio-target-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="portfolio-target-label" for="target_value">Portfolio Value in USD</label>
+            <input id="target_value" name="target_value" type="number" step="0.01" min="0.01" required class="portfolio-target-input" value="{{ view.portfolio_value_target_input_value }}" placeholder="Enter target value">
+            <button type="submit" class="target-button">Arm Liquidation Trigger</button>
+          </form>
+          {% if view.can_clear_portfolio_value_target %}
+            <form method="post" action="{{ url_for('clear_portfolio_target') }}" class="action-form" data-confirm="Clear the portfolio liquidation trigger?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="clear-button">Clear Trigger</button>
+            </form>
+          {% else %}
+            <span class="pill pill-disabled">No trigger armed</span>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Operations</p>
+          <h2>Managed Asset Operations</h2>
+        </div>
+        <div class="panel-note">Stop pauses an asset, sells it, and blocks restarts until you allow it again.</div>
+      </div>
+
+      {% if view.operations %}
+        <div class="operation-grid">
+          {% for operation in view.operations %}
+            <article class="operation-card">
+              <div class="cycle-topline">
+                <div>
+                  <p class="eyebrow">{{ operation.asset }}</p>
+                  <h3>{{ operation.symbol }}</h3>
+                </div>
+                <span class="pill {{ operation.operation_status_class }}">{{ operation.operation_status_label }}</span>
+              </div>
+              <p class="cycle-status-note">{{ operation.operation_note }}</p>
+              <section class="operation-budget-visual">
+                <div class="operation-budget-ring {{ operation.budget_ring.state_class }}">
+                  <svg class="operation-budget-svg" viewBox="0 0 120 120" aria-label="{{ operation.asset }} remaining budget">
+                    <circle class="operation-budget-track" cx="60" cy="60" r="{{ operation.budget_ring.radius }}"></circle>
+                    <circle class="operation-budget-progress" cx="60" cy="60" r="{{ operation.budget_ring.radius }}" stroke-dasharray="{{ operation.budget_ring.circumference }}" stroke-dashoffset="{{ operation.budget_ring.stroke_offset }}"></circle>
+                  </svg>
+                  <div class="operation-budget-center">
+                    <span class="operation-budget-amount">${{ operation.budget_ring.value_display }}</span>
+                    <span class="operation-budget-caption">left</span>
+                  </div>
+                </div>
+                <div class="operation-budget-copy">
+                  <span class="operation-budget-title">{{ operation.budget_ring.label }}</span>
+                  <strong>${{ operation.budget_ring.remaining_budget_display }} remaining</strong>
+                  <p class="operation-budget-note">{{ operation.budget_ring.note }}</p>
+                  <div class="operation-budget-meta">
+                    <span>{{ operation.budget_ring.remaining_pct_display }}% left</span>
+                    <span>${{ operation.budget_ring.spent_budget_display }} spent</span>
+                    <span>${{ operation.budget_ring.total_budget_display }} total</span>
+                  </div>
+                </div>
+              </section>
+              <dl class="cycle-stats operation-stats">
+                <div>
+                  <dt>Holding Qty</dt>
+                  <dd>{{ operation.holding_qty_display }}</dd>
+                </div>
+                <div>
+                  <dt>Holding Value</dt>
+                  <dd>${{ operation.holding_value_display }}</dd>
+                </div>
+                <div>
+                  <dt>Cycle Status</dt>
+                  <dd>{{ operation.cycle_status }}</dd>
+                </div>
+                <div>
+                  <dt>Budget</dt>
+                  <dd>${{ operation.budget_display }}</dd>
+                </div>
+                <div>
+                  <dt>Current PnL</dt>
+                  <dd class="{{ operation.current_profit_class }}">${{ operation.current_profit_display }}</dd>
+                </div>
+                <div>
+                  <dt>Target PnL</dt>
+                  <dd>${{ operation.profit_target_display }}</dd>
+                </div>
+              </dl>
+              <section class="strategy-profit-visual">
+                <div class="strategy-profit-head">
+                  <span class="strategy-profit-title">Recent PnL vs Target</span>
+                  <div class="strategy-profit-legend">
+                    <span class="legend-item">
+                      <span class="legend-swatch legend-current {{ operation.current_profit_class }}"></span>
+                      <strong class="{{ operation.current_profit_class }}">Now ${{ operation.current_profit_display }}</strong>
+                    </span>
+                    <span class="legend-item">
+                      <span class="legend-swatch legend-target"></span>
+                      <span>Target ${{ operation.profit_target_display }}</span>
+                    </span>
+                  </div>
+                </div>
+                <svg class="profit-chart" viewBox="{{ operation.profit_chart.view_box }}" preserveAspectRatio="none" aria-label="{{ operation.asset }} profit chart">
+                  <line class="profit-chart-zero" x1="{{ operation.profit_chart.left_x }}" y1="{{ operation.profit_chart.zero_y }}" x2="{{ operation.profit_chart.right_x }}" y2="{{ operation.profit_chart.zero_y }}"></line>
+                  <line class="profit-chart-target" x1="{{ operation.profit_chart.left_x }}" y1="{{ operation.profit_chart.target_y }}" x2="{{ operation.profit_chart.right_x }}" y2="{{ operation.profit_chart.target_y }}"></line>
+                  <polygon class="profit-chart-area" points="{{ operation.profit_chart.area_points }}"></polygon>
+                  <polyline class="profit-chart-line {{ operation.profit_chart.line_class }}" points="{{ operation.profit_chart.line_points }}"></polyline>
+                  <circle class="profit-chart-dot {{ operation.profit_chart.line_class }}" cx="{{ operation.profit_chart.last_x }}" cy="{{ operation.profit_chart.last_y }}" r="3.5"></circle>
+                </svg>
+                <div class="strategy-profit-scale">
+                  <span>Floor ${{ operation.profit_chart.min_label }}</span>
+                  <span>Ceiling ${{ operation.profit_chart.max_label }}</span>
+                </div>
+              </section>
+              <div class="operation-actions">
+                {% if operation.can_start %}
+                  <form method="post" action="{{ url_for('start_asset', asset=operation.asset) }}" class="action-form" data-confirm="Start {{ operation.asset }} now and submit a TWAP if Binance allows it?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="start-button">Start {{ operation.asset }}</button>
+                  </form>
+                {% endif %}
+                {% if operation.can_stop %}
+                  <form method="post" action="{{ url_for('stop_asset', asset=operation.asset) }}" class="action-form" data-confirm="Stop {{ operation.asset }}, sell its holdings, and pause new TWAP restarts?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="pause-button">Stop {{ operation.asset }}</button>
+                  </form>
+                {% endif %}
+                {% if operation.can_allow %}
+                  <form method="post" action="{{ url_for('allow_asset', asset=operation.asset) }}" class="action-form" data-confirm="Allow {{ operation.asset }} and let the bot start a TWAP again if applicable?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="allow-button">Allow {{ operation.asset }}</button>
+                  </form>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>No managed assets configured</h3>
+          <p>Add managed assets in strategy.json to control them here.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Assets</p>
+          <h2>Live Holdings</h2>
+        </div>
+        <div class="panel-note">When managed PnL reaches the trigger, the bot stops every managed cycle, sells managed holdings, and starts the participating strategies over.</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Qty</th>
+              <th>Free</th>
+              <th>Value</th>
+              <th>Avg Buy</th>
+              <th>PnL</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in view.snapshots %}
+              <tr>
+                <td>
+                  <div class="asset-cell">
+                    <strong>{{ item.asset }}</strong>
+                    <span>{{ item.symbol }}</span>
+                  </div>
+                </td>
+                <td>{{ item.quantity_display }}</td>
+                <td>{{ item.free_quantity_display }}</td>
+                <td>${{ item.value_display }}</td>
+                <td>${{ item.avg_buy_display }}</td>
+                <td>
+                  <div class="pnl-cell {{ item.profit_class }}">
+                    <strong>${{ item.profit_display }}</strong>
+                    <span>{{ item.profit_pct_display }}%</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="status-stack">
+                    {% if item.cycle_status %}
+                      <span class="pill {{ item.cycle_status_class }}">{{ item.cycle_status }}</span>
+                      {% if item.cycle_note %}
+                        <span class="note">{{ item.cycle_note }}</span>
+                      {% endif %}
+                    {% elif item.managed %}
+                      <span class="pill pill-slate">Managed</span>
+                    {% else %}
+                      <span class="pill pill-muted">Watching</span>
+                    {% endif %}
+                    {% if item.operation_status_label %}
+                      <span class="pill {{ item.operation_status_class }}">{{ item.operation_status_label }}</span>
+                    {% endif %}
+                    {% if item.operation_note %}
+                      <span class="note">{{ item.operation_note }}</span>
+                    {% endif %}
+                    {% if item.note %}
+                      <span class="note">{{ item.note }}</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if item.can_sell %}
+                    <form method="post" action="{{ url_for('sell_asset', asset=item.asset) }}" class="action-form" data-confirm="Sell {{ item.asset }} now and restart its managed TWAP if enabled?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="restart_cycle" value="true">
+                      <button type="submit" class="sell-button">Sell Now</button>
+                    </form>
+                  {% else %}
+                    <span class="pill pill-disabled">No action</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Algo Tracking</p>
+          <h2>Native TWAP Progress</h2>
+        </div>
+        <div class="panel-note">Shows every managed asset. Active TWAPs are refreshed from Binance, while idle or paused assets remain visible here too.</div>
+      </div>
+
+      {% if view.cycles %}
+        <div class="cycle-grid">
+          {% for cycle in view.cycles %}
+            <article class="cycle-card">
+              <div class="cycle-topline">
+                <div>
+                  <p class="eyebrow">{{ cycle.asset }}</p>
+                  <h3>{{ cycle.symbol }}</h3>
+                </div>
+                <span class="pill {{ cycle.algo_status_class }}">{{ cycle.algo_status }}</span>
+              </div>
+
+              {% if cycle.status_note %}
+                <p class="cycle-status-note">{{ cycle.status_note }}</p>
+              {% endif %}
+
+              <div class="progress-block">
+                <div class="progress-labels">
+                  <span>Execution</span>
+                  <strong>{{ '%.1f'|format(cycle.progress_pct) }}%</strong>
+                </div>
+                <div class="progress-rail">
+                  <div class="progress-fill" style="width: {{ cycle.progress_pct }}%"></div>
+                </div>
+              </div>
+
+              <dl class="cycle-stats">
+                <div>
+                  <dt>Submitted Qty</dt>
+                  <dd>{{ cycle.submitted_qty_display }}</dd>
+                </div>
+                <div>
+                  <dt>Executed Qty</dt>
+                  <dd>{{ cycle.executed_qty_display }}</dd>
+                </div>
+                <div>
+                  <dt>Executed Amt</dt>
+                  <dd>${{ cycle.executed_amt_display }}</dd>
+                </div>
+                <div>
+                  <dt>Avg Price</dt>
+                  <dd>${{ cycle.avg_price_display }}</dd>
+                </div>
+                <div>
+                  <dt>Budget</dt>
+                  <dd>${{ cycle.budget_display }}</dd>
+                </div>
+                <div>
+                  <dt>Whole Target</dt>
+                  <dd>${{ cycle.profit_target_display }}</dd>
+                </div>
+                <div>
+                  <dt>Duration</dt>
+                  <dd>{{ cycle.duration_seconds }}s</dd>
+                </div>
+                <div>
+                  <dt>Position PnL</dt>
+                  <dd class="{{ cycle.position_pnl_class }}">${{ cycle.position_pnl_display }}</dd>
+                </div>
+                <div>
+                  <dt>Retry In</dt>
+                  <dd>{% if cycle.retry_in_seconds is not none %}{{ cycle.retry_in_seconds }}s{% else %}-{% endif %}</dd>
+                </div>
+                <div>
+                  <dt>Confirm By</dt>
+                  <dd>{{ cycle.confirmation_deadline }}</dd>
+                </div>
+                <div>
+                  <dt>Submit Ack</dt>
+                  <dd>{{ cycle.submit_response_display }}</dd>
+                </div>
+              </dl>
+
+              <div class="cycle-meta">
+                <span>algoId {{ cycle.algo_id }}</span>
+                <span>clientAlgoId {{ cycle.client_algo_id }}</span>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>No active managed cycles</h3>
+          <p>Once a TWAP is submitted, its Binance progress will appear here.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if view.bitget_enabled %}
+    <section class="panel bitget-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Copy Trading</p>
+          <h2>Bitget Mirror Orders</h2>
+        </div>
+        <span class="pill pill-teal">ACTIVE</span>
+      </div>
+
+      {% if view.bitget_orders %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Side</th>
+                <th>Qty</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th>Order ID</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for bg_order in view.bitget_orders %}
+                <tr>
+                  <td><strong>{{ bg_order.symbol }}</strong></td>
+                  <td><span class="pill {{ bg_order.side_class }}">{{ bg_order.side }}</span></td>
+                  <td>{{ bg_order.quantity }}</td>
+                  <td><span class="pill {{ bg_order.status_class }}">{{ bg_order.status }}</span></td>
+                  <td>{{ bg_order.reason }}</td>
+                  <td class="bitget-order-id">{{ bg_order.order_id }}</td>
+                  <td>{{ bg_order.created_at }}</td>
+                </tr>
+                {% if bg_order.error %}
+                  <tr>
+                    <td colspan="7" class="bitget-error-row">{{ bg_order.error }}</td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>No mirrored orders yet</h3>
+          <p>When the bot places or sells on Binance, a matching market order will be sent to Bitget and shown here.</p>
+        </div>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

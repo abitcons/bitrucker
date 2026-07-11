@@ -1,0 +1,90 @@
+{% extends "saas_base.html" %}
+{% block title %}Billing | BitRucker{% endblock %}
+{% block heading %}Billing{% endblock %}
+{% block content %}
+<section class="content-grid">
+  <article class="panel-card">
+    <span class="eyebrow">CURRENT PLAN</span>
+    <h2>{{ monthly_price_usdt() }} USDT / month</h2>
+    <p>{{ subscription.label }}</p>
+    {% if subscription.state == 'active' %}
+      <p class="status-chip live">Paid</p>
+      {% if subscription.days_left %}<p>{{ subscription.days_left }} days remaining</p>{% endif %}
+    {% elif subscription.state == 'trial' %}
+      <p class="status-chip live">Trial active</p>
+      {% if subscription.days_left %}<p>{{ subscription.days_left }} days left</p>{% endif %}
+    {% else %}
+      <p class="status-chip locked">Subscription required</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('saas_create_invoice') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="primary-button" type="submit">Create payment invoice</button>
+    </form>
+  </article>
+
+  <article class="panel-card wide">
+    <span class="eyebrow">VERIFIED PAYMENT</span>
+    {% if latest_invoice %}
+      <h2>Invoice {{ latest_invoice.reference }}</h2>
+      <dl class="swing-metrics">
+        <div><dt>Amount</dt><dd>{{ latest_invoice.amount_usdt }} USDT</dd></div>
+        <div><dt>Network</dt><dd>{{ latest_invoice.network }}</dd></div>
+        <div><dt>Status</dt><dd>{{ latest_invoice.status|upper }}</dd></div>
+        <div><dt>Expires</dt><dd>{{ latest_invoice.expires_at[:16] }}</dd></div>
+      </dl>
+      <p class="muted">Send only {{ latest_invoice.amount_usdt }} USDT on {{ latest_invoice.network }} to:</p>
+      <div id="payment-address" title="Click to copy" style="margin-top:12px;padding:12px;border-radius:8px;background:#f3f7f6;font-family:Consolas,monospace;word-break:break-all;cursor:pointer;">{{ latest_invoice.deposit_address }}</div>
+      <p class="muted">Include reference <strong>{{ latest_invoice.reference }}</strong> in your payment evidence. Activation occurs only after a unique transaction hash or payment-provider reference is verified. A reusable wallet balance is never treated as a new payment.</p>
+      <div id="payment-status"></div>
+      <button class="secondary-button" type="button" id="btn-check-payment">Refresh status</button>
+    {% else %}
+      <h2>No open invoice</h2>
+      <p>Create an invoice to receive the configured merchant payment address and unique reference.</p>
+    {% endif %}
+  </article>
+</section>
+
+{% if invoices %}
+<section class="panel-card wide" style="margin-top:16px;">
+  <span class="eyebrow">INVOICE HISTORY</span>
+  <table class="data-table">
+    <thead><tr><th>Reference</th><th>Network</th><th>Amount</th><th>Status</th><th>Transaction</th><th>Date</th></tr></thead>
+    <tbody>
+      {% for invoice in invoices %}
+        <tr>
+          <td>{{ invoice.reference }}</td>
+          <td>{{ invoice.network }}</td>
+          <td>{{ invoice.amount_usdt }} USDT</td>
+          <td>{{ invoice.status|upper }}</td>
+          <td>{{ (invoice.tx_hash[:14] ~ '…') if invoice.tx_hash else '-' }}</td>
+          <td>{{ invoice.created_at[:16] }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<script>
+(() => {
+  const address = document.getElementById('payment-address');
+  address?.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(address.textContent.trim());
+    const status = document.getElementById('payment-status');
+    if (status) status.innerHTML = '<div class="flash success">Address copied.</div>';
+  });
+
+  document.getElementById('btn-check-payment')?.addEventListener('click', async () => {
+    const status = document.getElementById('payment-status');
+    try {
+      const response = await fetch('{{ url_for("api_billing_check") }}', { credentials: 'include' });
+      const data = await response.json();
+      if (status) status.innerHTML = `<div class="flash ${data.status === 'active' ? 'success' : ''}">${data.message}</div>`;
+      if (data.status === 'active') setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+      if (status) status.innerHTML = '<div class="flash error">Unable to refresh payment status.</div>';
+    }
+  });
+})();
+</script>
+{% endblock %}

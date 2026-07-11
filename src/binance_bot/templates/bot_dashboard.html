@@ -1,0 +1,1980 @@
+﻿{% set fragment = fragment|default(false) %}
+{% set embedded = embedded|default(false) %}
+{% if not fragment %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAXGUSDT 12h TWAP Swing Bot</title>
+{% endif %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: {% if embedded %}transparent{% else %}radial-gradient(circle at top right, rgba(15,118,110,0.16), transparent 28%), radial-gradient(circle at bottom left, rgba(194,122,24,0.14), transparent 30%), linear-gradient(135deg, #edf5f1 0%, #f8f3e7 100%){% endif %};
+            min-height: {% if embedded %}0{% else %}100vh{% endif %};
+            padding: {% if embedded %}0{% else %}18px{% endif %};
+        }
+
+        .container {
+            max-width: {% if embedded %}none{% else %}1200px{% endif %};
+            margin: 0 auto;
+        }
+
+        header {
+            color: #0b4f4a;
+            margin-bottom: 18px;
+            text-align: left;
+        }
+
+        h1 {
+            font-size: 2.15em;
+            margin-bottom: 10px;
+            text-shadow: none;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 1;
+            color: #5d6d68;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 18px 45px rgba(8, 33, 29, 0.12);
+            border: 1px solid rgba(15, 118, 110, 0.10);
+            backdrop-filter: blur(12px);
+        }
+
+        .card h2 {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #0f766e;
+            padding-bottom: 10px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #0f766e;
+            font-family: "Courier New", monospace;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
+
+        .status.idle {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.trading {
+            background: #e0f5f2;
+            color: #0b5f59;
+        }
+
+        .status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .volatility-indicator {
+            position: relative;
+            height: 60px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .volatility-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .volatility-threshold {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: #0f766e;
+            opacity: 0.8;
+        }
+
+        .green { color: #28a745; }
+        .red { color: #dc3545; }
+        .neutral { color: #666; }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .top-actions {
+            display: flex;
+            justify-content: flex-start;
+            margin-top: 14px;
+        }
+
+        .top-actions button {
+            min-width: 220px;
+        }
+
+        .selector-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-size: 1em;
+            font-weight: 700;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-size: 1em;
+            font-weight: 700;
+        }
+
+        .btn-secondary {
+            background: #0f766e;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #0b5f59;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(15, 118, 110, 0.24);
+        }
+
+        .candidate-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .candidate-item {
+            display: grid;
+            grid-template-columns: 88px 54px 1fr;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            background: #f7faf9;
+            border-radius: 8px;
+            border-left: 4px solid rgba(15, 118, 110, 0.12);
+            font-size: 0.88em;
+        }
+
+        .candidate-item.best {
+            border-left-color: #0f766e;
+            background: #eef9f6;
+        }
+
+        .candidate-symbol {
+            font-weight: 800;
+            color: #333;
+        }
+
+        .candidate-score {
+            font-family: "Courier New", monospace;
+            font-weight: 800;
+            color: #0f766e;
+        }
+
+        .candidate-reason {
+            color: #666;
+            line-height: 1.35;
+        }
+
+        .pair-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .pair-tabs-strip + .dashboard {
+            margin-top: 0;
+        }
+
+        .pair-tab {
+            border: 1px solid rgba(15, 118, 110, 0.15);
+            background: #f3f7f6;
+            color: #334;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 0.85em;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .pair-tab.active {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
+
+        .mode-live { color: #dc3545; }
+        .mode-dry { color: #856404; }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-start {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-start:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn-stop {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-stop:hover:not(:disabled) {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .btn-restart {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-restart:hover:not(:disabled) {
+            background: #e0a800;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 193, 7, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .mini-stat {
+            background: #f7faf9;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #0f766e;
+        }
+
+        .mini-stat-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .mini-stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .controls {
+                grid-template-columns: 1fr;
+            }
+
+            .selector-row,
+            .candidate-item {
+                grid-template-columns: 1fr;
+            }
+        }
+
+{% if embedded %}
+        .dashboard {
+            margin-bottom: 0;
+        }
+{% endif %}
+    </style>
+{% if not fragment %}
+</head>
+<body>
+{% endif %}
+    <div class="container">
+        {% if not embedded %}
+        <header>
+            <h1 id="page-title">PAXGUSDT 12h TWAP Swing Bot</h1>
+            <p class="subtitle">Native Spot TWAP entries, RSI-led swing exits, automatic cycle restart</p>
+            <div class="top-actions">
+                <button class="btn-stop" onclick="closeAllToUsdt()">Close All to USDT</button>
+            </div>
+        </header>
+        {% endif %}
+
+        <div id="message"></div>
+
+        <!-- Top Pair Tabs -->
+        {% if not embedded %}
+        <div class="pair-tabs-strip" id="pair-tabs-strip"></div>
+        {% endif %}
+
+        <div class="dashboard">
+            <!-- Status Card -->
+            {% set initial_status_data = initial_status if initial_status is defined else {} %}
+            <div class="card">
+                <h2>Status</h2>
+                <div class="metric">
+                    <span class="metric-label">Active Pair</span>
+                    <span class="metric-value" id="active-symbol">{{ initial_status_data.symbol if initial_status_data.symbol else (initial_active_symbol if initial_active_symbol is defined else '-') }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Execution Mode</span>
+                    <span class="metric-value {{ 'mode-dry' if initial_status_data.dry_run else 'mode-live' }}" id="execution-mode">{{ initial_status_data.execution_mode if initial_status_data.execution_mode else 'LIVE' }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Bot State</span>
+                    <span class="status {{ initial_status_data.status if initial_status_data.status else 'idle' }}" id="status-badge">{{ initial_status_data.status if initial_status_data.status else 'idle' }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Running For</span>
+                    <span class="metric-value" id="running-duration">{{ (initial_status_data.running_duration_seconds|default(0))|int }}s</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Assets</span>
+                    <span class="metric-value">$<span id="total-assets">{{ '%.2f'|format((initial_status_data.total_asset_value_usdt|default(0))|float) }}</span></span>
+                </div>
+                <div style="margin: -4px 0 8px; color: #777; font-size: 0.8em; line-height: 1.35;" id="total-assets-summary">{{ (initial_status_data.total_asset_count|default(0))|int }} priced asset(s): {{ initial_status_data.total_asset_summary if initial_status_data.total_asset_summary else 'No asset snapshot yet' }}</div>
+                <div class="metric">
+                    <span class="metric-label">Cycles Completed</span>
+                    <span class="metric-value" id="cycles">{{ (initial_status_data.cycles_completed|default(0))|int }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Current Price</span>
+                    <span class="metric-value">$<span id="price">{{ '%.2f'|format((initial_status_data.current_price|default(0))|float) }}</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Invested Amount</span>
+                    <span class="metric-value">$<span id="invested-amount">{{ '%.2f'|format((initial_status_data.position_cost_basis|default(0))|float) }}</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Buy Price</span>
+                    <span class="metric-value">$<span id="avg-buy-price">{{ '%.2f'|format(initial_status_data.entry_price|float) if initial_status_data.entry_price else '-' }}</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Profit</span>
+                    <span class="metric-value">$<span id="status-target-profit">{{ '%.2f'|format((initial_status_data.target_profit_usdt|default(0))|float) }}</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Sell Price</span>
+                    <span class="metric-value">$<span id="status-sell-price">{{ '%.2f'|format(initial_status_data.target_sell_price|float) if initial_status_data.target_sell_price and (initial_status_data.target_sell_price|float) > 0 else '-' }}</span></span>
+                </div>
+            </div>
+
+            <!-- Pair Selector Card -->
+            <div class="card">
+                {% set candidate_payload = initial_candidate_payload if initial_candidate_payload is defined else none %}
+                {% set initial_candidates = candidate_payload.candidates if candidate_payload and candidate_payload.candidates else [] %}
+                {% set initial_best_candidate = candidate_payload.best if candidate_payload and candidate_payload.best else (initial_candidates[0] if initial_candidates else none) %}
+                <h2>Pair Selector</h2>
+                <div class="selector-row">
+        <select id="symbol-select" aria-label="Currency pair">
+                    {% if supported_symbols is defined %}
+                      {% for sym in supported_symbols %}
+                        <option value="{{ sym }}">{{ sym }}</option>
+                      {% endfor %}
+                    {% endif %}
+                    </select>
+                    <button class="btn-secondary" id="btn-add-pair" onclick="addPairTab()">Add Pair</button>
+                    <button class="btn-stop" id="btn-remove-pair" onclick="removeActivePair()">Remove Pair</button>
+                </div>
+                <div class="pair-tabs" id="pair-tabs"></div>
+                <div class="metric">
+                    <span class="metric-label">Best Candidate</span>
+                    <span class="metric-value" id="best-symbol">{{ initial_best_candidate.symbol if initial_best_candidate else (initial_active_symbol if initial_active_symbol is defined and initial_active_symbol else (initial_pairs[0] if initial_pairs is defined and initial_pairs else 'None')) }}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Candidate Score</span>
+                    <span class="metric-value" id="best-score">{{ '%.2f'|format(initial_best_candidate.score|float) if initial_best_candidate else '0.00' }}</span>
+                </div>
+                <div class="controls" style="grid-template-columns: 1fr 1fr; margin-top: 12px;">
+                    <button class="btn-secondary" onclick="refreshCandidates(true)">Refresh Rank</button>
+                    <button class="btn-start" id="btn-use-best" onclick="useBestCandidate()" disabled>Use Best</button>
+                </div>
+                <div class="candidate-list" id="candidate-list">
+                    {% if initial_candidates %}
+                        {% for candidate in initial_candidates[:5] %}
+                            <div class="candidate-item {{ 'best' if loop.first else '' }}">
+                                <span class="candidate-symbol">{{ candidate.symbol }} · {{ (candidate.instrument_type or 'crypto')|upper }}</span>
+                                <span class="candidate-score">{{ '%.1f'|format(candidate.score|float) }}</span>
+                                <span class="candidate-reason">{{ candidate.reason }}</span>
+                            </div>
+                        {% endfor %}
+                    {% elif initial_pairs is defined and initial_pairs %}
+                        {% for symbol in initial_pairs[:5] %}
+                            <div class="candidate-item {{ 'best' if loop.first else '' }}">
+                                <span class="candidate-symbol">{{ symbol }}</span>
+                                <span class="candidate-score">0.0</span>
+                                <span class="candidate-reason">Ranking will refresh from live market data</span>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Market Signals Card -->
+            <div class="card">
+                <h2>RSI & Market Signals</h2>
+                <div class="metric">
+                    <span class="metric-label">Volatility</span>
+                    <span class="metric-value" id="volatility">0.00%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Threshold</span>
+                    <span class="metric-value" id="threshold">2.00%</span>
+                </div>
+                <div class="volatility-indicator">
+                    <div class="volatility-bar" id="vol-bar" style="width: 0%">
+                        <span id="vol-percent">0%</span>
+                    </div>
+                    <div class="volatility-threshold" id="threshold-line" style="left: 0%"></div>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">TWAP Start Bias</span>
+                    <span id="vol-status" class="metric-value neutral">Waiting...</span>
+                </div>
+                <hr style="margin: 12px 0; opacity: 0.2;">
+                <div class="metric">
+                    <span class="metric-label">RSI (14)</span>
+                    <span class="metric-value" id="rsi">50.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">RSI Status</span>
+                    <span id="rsi-status" class="metric-value neutral">Neutral</span>
+                </div>
+                <div style="margin-top: 12px;">
+                    <div style="display: flex; gap: 10px; font-size: 0.75em; color: #666; margin-bottom: 4px;">
+                        <span>0</span><span style="flex: 1;text-align: center;">30(OS)</span><span style="flex: 1;text-align: center;">50</span><span style="flex: 1;text-align: center;">70(OB)</span><span>100</span>
+                    </div>
+                    <div style="height: 16px; background: linear-gradient(to right, #dc3545 0%, #ffc107 30%, #0f766e 50%, #ffc107 70%, #dc3545 100%); border-radius: 8px; overflow: hidden; position: relative;">
+                        <div id="rsi-marker" style="position: absolute; top: 0; width: 2px; height: 100%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 2px black; left: 50%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Sentiment Card (New) -->
+            <div class="card">
+                <h2>ðŸ“Š Market Sentiment</h2>
+                <div class="metric">
+                    <span class="metric-label">Fear & Greed</span>
+                    <span class="metric-value" id="sentiment">50.0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Status</span>
+                    <span id="sentiment-status" class="metric-value neutral">Neutral</span>
+                </div>
+                <div style="margin-top: 12px;">
+                    <div style="display: flex; gap: 8px; font-size: 0.7em; color: #666; margin-bottom: 4px;">
+                        <span>ðŸ”´ Fear</span><span style="flex: 1;"></span><span>ðŸ˜ Neutral</span><span style="flex: 1;"></span><span>ðŸ’š Greed</span>
+                    </div>
+                    <div style="height: 20px; background: linear-gradient(to right, #dc3545 0%, #ffc107 40%, #0f766e 50%, #ffc107 60%, #28a745 100%); border-radius: 8px; overflow: hidden; position: relative;">
+                        <div id="sentiment-marker" style="position: absolute; top: 0; width: 3px; height: 100%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 3px black; left: 50%;"></div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 0.8em; text-align: center; color: #0f766e;">
+                        <strong id="sentiment-label">Neutral Market</strong>
+                    </div>
+                </div>
+                <div style="margin-top: 12px; padding: 8px; background: #f7faf9; border-radius: 6px; font-size: 0.8em;">
+                    <span id="sentiment-source" style="color: #999;">Source: Crypto Fear & Greed Index</span>
+                </div>
+            </div>
+
+            <!-- Advisor Card -->
+            <div class="card">
+                <h2>Trading Advisor</h2>
+                <div class="metric">
+                    <span class="metric-label">Action</span>
+                    <span class="metric-value" id="advisor-action">MONITOR</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Confidence</span>
+                    <span class="metric-value"><span id="advisor-confidence">0.0</span>%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Media Sentiment</span>
+                    <span class="metric-value" id="media-sentiment">neutral</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Codex CLI</span>
+                    <span class="metric-value" id="codex-status">not checked</span>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background: #f7faf9; border-radius: 6px; color: #444; line-height: 1.45;">
+                    <div id="advisor-summary">Waiting for market data</div>
+                    <div id="advisor-source" style="margin-top: 8px; color: #777; font-size: 0.8em;"></div>
+                    <div id="media-summary" style="margin-top: 6px; color: #777; font-size: 0.8em;"></div>
+                </div>
+            </div>
+
+            <!-- Position Card -->
+            <div class="card">
+                <h2>TWAP Position</h2>
+                <div class="metric">
+                    <span class="metric-label" id="holdings-label">Holdings (PAXG)</span>
+                    <span class="metric-value" id="position">0.0000</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Free / Locked</span>
+                    <span class="metric-value"><span id="position-free">0.0000</span> / <span id="position-locked">0.0000</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Entry Price</span>
+                    <span class="metric-value" id="entry-price">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cost Basis</span>
+                    <span class="metric-value">$<span id="cost-basis">0</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cost Source</span>
+                    <span class="metric-value" id="cost-source">none</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">TWAP Status</span>
+                    <span class="metric-value" id="twap-status">idle</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">TWAP Budget Slice</span>
+                    <span class="metric-value">$<span id="twap-budget">0.00</span></span>
+                </div>
+            </div>
+
+            <!-- Profit Card -->
+            <div class="card">
+                <h2>Profit Tracking</h2>
+                <div class="metric">
+                    <span class="metric-label">Current P&L</span>
+                    <span class="metric-value" id="profit">$0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Profit</span>
+                    <span class="metric-value green">$<span id="target">10.00</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Suggested Target</span>
+                    <span class="metric-value green">$<span id="suggested-target">10.00</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Mode</span>
+                    <span class="metric-value green" id="auto-target-mode">AUTO SUGGESTED</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Sell Order</span>
+                    <span class="metric-value" id="target-sell-status">IDLE</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Sell Price</span>
+                    <span class="metric-value">$<span id="target-sell-price">-</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Target Sell Qty</span>
+                    <span class="metric-value" id="target-sell-qty">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Order Check Interval</span>
+                    <span class="metric-value"><span id="target-sell-interval">60</span>s</span>
+                </div>
+                <div style="margin-top: 10px; color: #777; font-size: 0.85em; line-height: 1.4;" id="target-suggestion-reason">Waiting for suggestion</div>
+                <div class="selector-row" style="margin-top: 12px;">
+                    <input type="number" min="1" max="500" step="0.01" id="target-input" value="10.00" aria-label="Target profit USDT">
+                    <button class="btn-secondary" onclick="setTargetProfit()">Save Target</button>
+                </div>
+                <div style="margin-top: 8px; color: #777; font-size: 0.85em; line-height: 1.4;" id="target-auto-note">Suggested target applies automatically.</div>
+                <div style="margin-top: 15px;">
+                    <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Progress</div>
+                    <div style="height: 24px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                        <div id="profit-bar" style="height: 100%; background: #28a745; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Card -->
+            <div class="card">
+                <h2>Swing Cycle</h2>
+                <div class="metric">
+                    <span class="metric-label">Available Budget</span>
+                    <span class="metric-value">$<span id="budget-total">5000</span></span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Reusable Balance</span>
+                    <span class="metric-value" id="budget-remaining">$5000</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">TWAP Duration</span>
+                    <span class="metric-value">12.0 hours</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Last Exit</span>
+                    <span class="metric-value" id="last-exit">-</span>
+                </div>
+            </div>
+
+            <!-- Volatility Chart Card - Full Width -->
+            <div class="card full-width">
+                <h2>Volatility Trend</h2>
+                <canvas id="volatilityChart" style="max-height: 200px;"></canvas>
+            </div>
+
+            <!-- RSI Chart Card -->
+            <div class="card">
+                <h2>RSI Oscillator</h2>
+                <canvas id="rsiChart" style="max-height: 250px;"></canvas>
+            </div>
+
+            <!-- Sentiment Chart Card -->
+            <div class="card">
+                <h2>Sentiment Trend</h2>
+                <canvas id="sentimentChart" style="max-height: 250px;"></canvas>
+            </div>
+
+            <!-- Price Chart Card -->
+            <div class="card">
+                <h2>Price Movement</h2>
+                <canvas id="priceChart" style="max-height: 250px;"></canvas>
+            </div>
+
+            <!-- P&L Chart Card -->
+            <div class="card">
+                <h2>Profit & Loss</h2>
+                <canvas id="profitChart" style="max-height: 250px;"></canvas>
+            </div>
+
+            <!-- Controls Card - Full Width -->
+            <div class="card full-width">
+                <h2>Controls</h2>
+                <div class="selector-row" style="margin-bottom: 12px; grid-template-columns: 1fr 1fr 1fr;">
+                    <select id="strategy-select" aria-label="Strategy mode" onchange="setStrategyMode()">
+                        <option value="auto">AUTO (budget-aware)</option>
+                        <option value="spot">SPOT MARKET</option>
+                        <option value="twap">TWAP</option>
+                    </select>
+                    <input type="number" id="twap-switch-budget-input" min="50" step="10" value="1000" aria-label="Auto switch budget to TWAP" onchange="setStrategyMode()">
+                    <input type="number" id="start-budget-input" min="10" step="10" value="5000" aria-label="Start budget">
+                </div>
+                <div class="controls">
+                    <button class="btn-start" id="btn-start" onclick="startBot()">Start Bot</button>
+                    <button class="btn-stop" id="btn-stop" onclick="stopBot()" disabled>Stop Bot</button>
+                    <button class="btn-restart" id="btn-restart" onclick="restartBot()" disabled>Restart</button>
+                </div>
+                <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="toggleAuthSettings()">Auth Settings</button>
+                </div>
+                <div class="top-actions" id="token-setup-actions" data-visible="false" style="display: none; gap: 10px; margin-top: 10px;">
+                    <button class="btn-secondary" id="btn-set-action-token" onclick="setActionApiToken()">Set Action API Token</button>
+                    <button class="btn-secondary" id="btn-set-cf-token" onclick="setCfServiceToken()">Set CF Service Token</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const SESSION_CSRF_TOKEN = {{ csrf_token()|tojson }};
+        const INITIAL_PAIR_TABS = {{ initial_pairs|tojson if initial_pairs is defined else '[]' }};
+        const INITIAL_ACTIVE_SYMBOL = {{ initial_active_symbol|tojson if initial_active_symbol is defined else '' }};
+        const INITIAL_STATUS = {{ initial_status|tojson if initial_status is defined else '{}' }};
+        const TEMPLATE_SUPPORTED_SYMBOLS = {{ supported_symbols|tojson if supported_symbols is defined else '[]' }};
+        let updateInterval;
+        let currentSymbol = (INITIAL_STATUS.symbol || INITIAL_ACTIVE_SYMBOL || '');
+        let activeTabSymbol = (INITIAL_STATUS.symbol || INITIAL_ACTIVE_SYMBOL || '');
+        let currentBaseAsset = INITIAL_STATUS.base_asset || 'BASE';
+        let supportedSymbolsLoaded = false;
+        let supportedSymbolKey = '';
+        let supportedSymbols = [];
+        let pairTabs = [];
+        const pairProfits = {};
+        let bestCandidateSymbol = null;
+        let lastCandidateRefresh = 0;
+        let canSwitchSymbol = false;
+        
+        // Chart instances
+        let volatilityChart, priceChart, profitChart, rsiChart, sentimentChart;
+        
+        // Data history for charts
+        const chartData = {
+            timestamps: [],
+            volatility: [],
+            prices: [],
+            profits: [],
+            rsi: [],
+            sentiment: []
+        };
+        
+        const maxDataPoints = 60; // Keep last 60 data points
+
+        pairTabs = Array.isArray(INITIAL_PAIR_TABS) ? INITIAL_PAIR_TABS.slice() : [];
+        if (!activeTabSymbol && pairTabs.length > 0) {
+            activeTabSymbol = pairTabs[0];
+            currentSymbol = pairTabs[0];
+        }
+        if (!currentSymbol && Array.isArray(TEMPLATE_SUPPORTED_SYMBOLS) && TEMPLATE_SUPPORTED_SYMBOLS.length > 0) {
+            currentSymbol = TEMPLATE_SUPPORTED_SYMBOLS[0];
+            activeTabSymbol = TEMPLATE_SUPPORTED_SYMBOLS[0];
+        }
+        populateSymbolSelect(Array.isArray(TEMPLATE_SUPPORTED_SYMBOLS) ? TEMPLATE_SUPPORTED_SYMBOLS : [], currentSymbol);
+        renderPairTabs();
+
+        function buildActionAuthHeaders(includeJson = true) {
+            const headers = {};
+            if (includeJson) {
+                headers['Content-Type'] = 'application/json';
+            }
+            if (SESSION_CSRF_TOKEN) {
+                headers['X-CSRF-Token'] = SESSION_CSRF_TOKEN;
+            }
+            const apiToken = (localStorage.getItem('bot_action_api_token') || '').trim();
+            if (apiToken) {
+                headers['X-Bot-Api-Key'] = apiToken;
+                headers['Authorization'] = apiToken.toLowerCase().startsWith('bearer ') ? apiToken : `Bearer ${apiToken}`;
+            }
+            const cfId = (localStorage.getItem('cf_access_client_id') || '').trim();
+            const cfSecret = (localStorage.getItem('cf_access_client_secret') || '').trim();
+            if (cfId && cfSecret) {
+                headers['CF-Access-Client-Id'] = cfId;
+                headers['CF-Access-Client-Secret'] = cfSecret;
+            }
+            return headers;
+        }
+
+        function updateTokenSetupVisibility() {
+            const apiToken = (localStorage.getItem('bot_action_api_token') || '').trim();
+            const cfId = (localStorage.getItem('cf_access_client_id') || '').trim();
+            const cfSecret = (localStorage.getItem('cf_access_client_secret') || '').trim();
+
+            const hasActionToken = Boolean(apiToken);
+            const hasCfServiceToken = Boolean(cfId && cfSecret);
+
+            const actionButton = document.getElementById('btn-set-action-token');
+            const cfButton = document.getElementById('btn-set-cf-token');
+            const tokenActions = document.getElementById('token-setup-actions');
+
+            if (actionButton) {
+                actionButton.style.display = hasActionToken ? 'none' : '';
+            }
+            if (cfButton) {
+                cfButton.style.display = hasCfServiceToken ? 'none' : '';
+            }
+            if (tokenActions) {
+                const visible = tokenActions.dataset.visible === 'true';
+                tokenActions.style.display = visible ? 'flex' : 'none';
+            }
+        }
+
+        function toggleAuthSettings(forceVisible = null) {
+            const tokenActions = document.getElementById('token-setup-actions');
+            if (!tokenActions) return;
+            if (typeof forceVisible === 'boolean') {
+                tokenActions.dataset.visible = forceVisible ? 'true' : 'false';
+            } else {
+                tokenActions.dataset.visible = tokenActions.dataset.visible === 'true' ? 'false' : 'true';
+            }
+            updateTokenSetupVisibility();
+        }
+
+        function revealAuthSettingsForUnauthorized() {
+            toggleAuthSettings(true);
+            showMessage('Action request was not authorized. Use Auth Settings only if you are accessing remotely.', 'error');
+        }
+
+        async function parseApiJsonSafe(response) {
+            try {
+                return await response.json();
+            } catch {
+                return {};
+            }
+        }
+
+        function loadPairTabs() {
+            try {
+                const raw = localStorage.getItem('pair_tabs');
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) return [];
+                return parsed.filter((symbol) => typeof symbol === 'string' && symbol.trim());
+            } catch {
+                return [];
+            }
+        }
+
+        function savePairTabs() {
+            localStorage.setItem('pair_tabs', JSON.stringify(pairTabs));
+        }
+
+        function ensurePairTab(symbol) {
+            if (!symbol) return;
+            if (!pairTabs.includes(symbol)) {
+                pairTabs.push(symbol);
+                savePairTabs();
+            }
+        }
+
+        function renderPairTabs() {
+            const container = document.getElementById('pair-tabs');
+            const strip = document.getElementById('pair-tabs-strip');
+            const html = pairTabs.map((symbol) => {
+                const active = symbol === activeTabSymbol ? 'active' : '';
+                const profit = pairProfits[symbol];
+                const profitable = typeof profit === 'number' && profit >= 0.001;
+                const profitClass = profitable ? 'profitable' : '';
+                return `<button class="pair-tab ${active} ${profitClass}" data-symbol="${symbol}" onclick="openPairTab('${symbol}')">${symbol}</button>`;
+            }).join('');
+            if (container) container.innerHTML = html;
+            if (strip) strip.innerHTML = html;
+        }
+
+        async function refreshPairProfits() {
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/pairs`);
+                const data = await response.json();
+                if (!Array.isArray(data.pairs)) return;
+                for (const item of data.pairs) {
+                    pairProfits[item.symbol] = item.current_profit_usdt || 0;
+                }
+                renderPairTabs();
+            } catch (error) {
+                // silent
+            }
+        }
+
+        async function addPairTab(symbolOverride) {
+            const symbol = symbolOverride || document.getElementById('symbol-select').value;
+            if (!symbol) {
+                showMessage('Select a pair first', 'error');
+                return;
+            }
+            if (!supportedSymbols.includes(symbol)) {
+                showMessage('Unsupported pair selected', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/pairs`, {
+                    method: 'POST',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to add pair');
+                }
+                const resolvedSymbol = data.resolved_symbol || data.status?.symbol || symbol;
+                ensurePairTab(resolvedSymbol);
+                activeTabSymbol = resolvedSymbol;
+                renderPairTabs();
+                chartData.timestamps = [];
+                chartData.volatility = [];
+                chartData.prices = [];
+                chartData.profits = [];
+                chartData.rsi = [];
+                chartData.sentiment = [];
+                showMessage(data.message || `${resolvedSymbol} added and started in parallel.`, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error adding pair: ' + error.message, 'error');
+            }
+        }
+
+        async function removeActivePair() {
+            const symbol = activeTabSymbol || currentSymbol;
+            if (!symbol) {
+                showMessage('No active pair to remove', 'error');
+                return;
+            }
+
+            const confirmed = confirm(`Remove ${symbol} from active pairs?`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/pairs`, {
+                    method: 'DELETE',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to remove pair');
+                }
+
+                if (Array.isArray(data.managed_pairs)) {
+                    pairTabs = data.managed_pairs.slice();
+                    if (pairTabs.length > 0) {
+                        activeTabSymbol = data.active_symbol || pairTabs[0];
+                    } else {
+                        activeTabSymbol = '';
+                        currentSymbol = '';
+                        document.getElementById('active-symbol').textContent = '-';
+                        document.getElementById('status-badge').textContent = 'NO ACTIVE PAIR';
+                        document.getElementById('status-badge').className = 'status idle';
+                        document.title = 'No Active Pair 12h TWAP Swing Bot';
+                        document.getElementById('page-title').textContent = 'No Active Pair 12h TWAP Swing Bot';
+                    }
+                    savePairTabs();
+                    renderPairTabs();
+                }
+
+                chartData.timestamps = [];
+                chartData.volatility = [];
+                chartData.prices = [];
+                chartData.profits = [];
+                chartData.rsi = [];
+                chartData.sentiment = [];
+
+                showMessage(data.message || `${symbol} removed.`, 'success');
+                if (pairTabs.length > 0) {
+                    await updateStatus();
+                }
+            } catch (error) {
+                showMessage('Error removing pair: ' + error.message, 'error');
+            }
+        }
+
+        async function openPairTab(symbol) {
+            if (!symbol || symbol === activeTabSymbol) {
+                return;
+            }
+            activeTabSymbol = symbol;
+            ensurePairTab(symbol);
+            renderPairTabs();
+            chartData.timestamps = [];
+            chartData.volatility = [];
+            chartData.prices = [];
+            chartData.profits = [];
+            chartData.rsi = [];
+            chartData.sentiment = [];
+            await updateStatus();
+        }
+
+        function setActionApiToken() {
+            const current = localStorage.getItem('bot_action_api_token') || '';
+            const nextValue = prompt('Enter BOT_ACTION_API_TOKEN (leave blank to clear):', current);
+            if (nextValue === null) return;
+            const trimmed = nextValue.trim();
+            if (trimmed) {
+                localStorage.setItem('bot_action_api_token', trimmed);
+                showMessage('Action API token saved in browser storage.', 'success');
+            } else {
+                localStorage.removeItem('bot_action_api_token');
+                showMessage('Action API token cleared.', 'success');
+            }
+            updateTokenSetupVisibility();
+        }
+
+        function setCfServiceToken() {
+            const currentId = localStorage.getItem('cf_access_client_id') || '';
+            const currentSecret = localStorage.getItem('cf_access_client_secret') || '';
+            const nextId = prompt('Enter CF-Access-Client-Id (leave blank to clear):', currentId);
+            if (nextId === null) return;
+            const nextSecret = prompt('Enter CF-Access-Client-Secret (leave blank to clear):', currentSecret);
+            if (nextSecret === null) return;
+            const id = nextId.trim();
+            const secret = nextSecret.trim();
+            if (id && secret) {
+                localStorage.setItem('cf_access_client_id', id);
+                localStorage.setItem('cf_access_client_secret', secret);
+                showMessage('Cloudflare service token saved in browser storage.', 'success');
+            } else {
+                localStorage.removeItem('cf_access_client_id');
+                localStorage.removeItem('cf_access_client_secret');
+                showMessage('Cloudflare service token cleared.', 'success');
+            }
+            updateTokenSetupVisibility();
+        }
+
+        function formatDuration(totalSeconds) {
+            const secondsValue = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+            const days = Math.floor(secondsValue / 86400);
+            const hours = Math.floor((secondsValue % 86400) / 3600);
+            const minutes = Math.floor((secondsValue % 3600) / 60);
+            const seconds = secondsValue % 60;
+            if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+            if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+            if (minutes > 0) return `${minutes}m ${seconds}s`;
+            return `${seconds}s`;
+        }
+
+        async function updateStatus() {
+            if (!activeTabSymbol && !currentSymbol) {
+                try {
+                    const pairsResponse = await fetch(`${API_BASE}/api/bot/pairs`, { credentials: 'include' });
+                    const pairsData = await parseApiJsonSafe(pairsResponse);
+                    const pairs = Array.isArray(pairsData.pairs) ? pairsData.pairs : [];
+                    if (pairs.length > 0) {
+                        activeTabSymbol = pairs[0].symbol;
+                    } else {
+                        return;
+                    }
+                } catch (error) {
+                    return;
+                }
+            }
+
+            try {
+                const selectedSymbol = activeTabSymbol || currentSymbol;
+                let response;
+                let data;
+
+                if (selectedSymbol) {
+                    const statusSymbol = encodeURIComponent(selectedSymbol);
+                    response = await fetch(`${API_BASE}/api/bot/status?symbol=${statusSymbol}`, { credentials: 'include' });
+                    data = await parseApiJsonSafe(response);
+                } else {
+                    response = await fetch(`${API_BASE}/api/bot/status`, { credentials: 'include' });
+                    data = await parseApiJsonSafe(response);
+                }
+
+                if (!response.ok && selectedSymbol) {
+                    // Recover automatically when browser tab points to a no-longer-active pair.
+                    response = await fetch(`${API_BASE}/api/bot/status`, { credentials: 'include' });
+                    data = await parseApiJsonSafe(response);
+                }
+
+                const redirectedToLogin = Boolean(response.redirected && response.url && response.url.includes('/login'));
+                if (redirectedToLogin) {
+                    throw new Error('Session expired. Please sign in again.');
+                }
+
+                if (!response.ok || !data || typeof data !== 'object' || !data.symbol) {
+                    throw new Error(data.error || 'Unable to load bot status');
+                }
+
+                currentSymbol = data.symbol || currentSymbol;
+                activeTabSymbol = currentSymbol;
+                currentBaseAsset = data.base_asset || currentBaseAsset;
+                document.title = `${currentSymbol} 12h TWAP Swing Bot`;
+                document.getElementById('page-title').textContent = `${currentSymbol} 12h TWAP Swing Bot`;
+                document.getElementById('active-symbol').textContent = currentSymbol;
+                const executionMode = document.getElementById('execution-mode');
+                executionMode.textContent = data.execution_mode || 'LIVE';
+                executionMode.className = `metric-value ${data.dry_run ? 'mode-dry' : 'mode-live'}`;
+                document.getElementById('holdings-label').textContent = `Holdings (${currentBaseAsset})`;
+                populateSymbolSelect(data.supported_instruments || data.supported_symbols || [], currentSymbol);
+                if (Array.isArray(data.managed_pairs)) {
+                    pairTabs = data.managed_pairs.slice();
+                    savePairTabs();
+                }
+                ensurePairTab(currentSymbol);
+                renderPairTabs();
+                const removeButton = document.getElementById('btn-remove-pair');
+                if (removeButton) {
+                    removeButton.disabled = pairTabs.length === 0;
+                }
+                
+                // Update status badge
+                const badge = document.getElementById('status-badge');
+                badge.textContent = data.status.toUpperCase();
+                badge.className = `status ${data.status}`;
+                document.getElementById('running-duration').textContent = formatDuration(data.running_duration_seconds || 0);
+                document.getElementById('total-assets').textContent = parseFloat(data.total_asset_value_usdt || 0).toFixed(2);
+                document.getElementById('total-assets-summary').textContent = `${data.total_asset_count || 0} priced asset(s): ${data.total_asset_summary || 'No asset snapshot yet'}`;
+                document.getElementById('invested-amount').textContent = parseFloat(data.position_cost_basis || 0).toFixed(2);
+                document.getElementById('avg-buy-price').textContent = data.entry_price ? parseFloat(data.entry_price).toFixed(2) : '-';
+                document.getElementById('status-target-profit').textContent = parseFloat(data.target_profit_usdt || 0).toFixed(2);
+                const statusSellPrice = parseFloat(data.target_sell_price || 0);
+                document.getElementById('status-sell-price').textContent = statusSellPrice > 0 ? statusSellPrice.toFixed(2) : '-';
+                
+                // Update price and volatility
+                document.getElementById('price').textContent = data.current_price.toFixed(2);
+                document.getElementById('volatility').textContent = data.volatility.toFixed(2) + '%';
+                document.getElementById('threshold').textContent = data.volatility_threshold.toFixed(2) + '%';
+                
+                // Update volatility bar
+                const volPercent = data.volatility;
+                const thresholdPercent = data.volatility_threshold;
+                const barElement = document.getElementById('vol-bar');
+                barElement.style.width = Math.min(volPercent * 5, 100) + '%'; // Scale for visibility
+                document.getElementById('vol-percent').textContent = volPercent.toFixed(2) + '%';
+                document.getElementById('threshold-line').style.left = Math.min(thresholdPercent * 5, 100) + '%';
+                
+                // Update TWAP start status
+                const volStatus = document.getElementById('vol-status');
+                if (data.status === 'trading') {
+                    volStatus.textContent = 'ðŸ” TWAP RUNNING';
+                    volStatus.className = 'metric-value green';
+                } else if (data.current_rsi <= data.twap_rsi_start_threshold) {
+                    volStatus.textContent = 'ðŸŸ¢ RSI READY';
+                    volStatus.className = 'metric-value green';
+                } else {
+                    volStatus.textContent = 'â³ WAIT RSI';
+                    volStatus.className = 'metric-value neutral';
+                }
+                
+                // Update RSI display
+                const rsi = parseFloat(data.current_rsi);
+                document.getElementById('rsi').textContent = rsi.toFixed(2);
+                const rsiMarker = document.getElementById('rsi-marker');
+                rsiMarker.style.left = (rsi / 100 * 100) + '%';
+                
+                // Update RSI status
+                const rsiStatus = document.getElementById('rsi-status');
+                if (rsi < 30) {
+                    rsiStatus.textContent = 'ðŸŸ¢ OVERSOLD';
+                    rsiStatus.className = 'metric-value green';
+                } else if (rsi > 70) {
+                    rsiStatus.textContent = 'ðŸ”´ OVERBOUGHT';
+                    rsiStatus.className = 'metric-value red';
+                } else {
+                    rsiStatus.textContent = 'âšª NEUTRAL';
+                    rsiStatus.className = 'metric-value neutral';
+                }
+                
+                // Update Sentiment display
+                const sentiment = parseFloat(data.market_sentiment);
+                const sentimentName = data.sentiment_name;
+                document.getElementById('sentiment').textContent = sentiment.toFixed(1);
+                const sentimentMarker = document.getElementById('sentiment-marker');
+                sentimentMarker.style.left = (sentiment / 100 * 100) + '%';
+                
+                // Map sentiment to display name and emoji
+                let sentimentLabel = 'Neutral Market';
+                let sentimentEmoji = 'ðŸ˜';
+                let sentimentClass = 'neutral';
+                
+                if (sentiment < 25) {
+                    sentimentLabel = 'ðŸ”´ Extreme Fear';
+                    sentimentEmoji = 'ðŸ˜±';
+                    sentimentClass = 'red';
+                } else if (sentiment < 45) {
+                    sentimentLabel = 'ðŸŸ  Fear';
+                    sentimentEmoji = 'ðŸ˜Ÿ';
+                    sentimentClass = 'red';
+                } else if (sentiment < 55) {
+                    sentimentLabel = 'ðŸ˜ Neutral';
+                    sentimentEmoji = 'ðŸ˜';
+                    sentimentClass = 'neutral';
+                } else if (sentiment < 75) {
+                    sentimentLabel = 'ðŸŸ¢ Greed';
+                    sentimentEmoji = 'ðŸ˜Š';
+                    sentimentClass = 'green';
+                } else {
+                    sentimentLabel = 'ðŸ’š Extreme Greed';
+                    sentimentEmoji = 'ðŸ¤‘';
+                    sentimentClass = 'green';
+                }
+                
+                document.getElementById('sentiment-status').textContent = sentimentEmoji + ' ' + sentimentName.toUpperCase().replace('_', ' ');
+                document.getElementById('sentiment-status').className = 'metric-value ' + sentimentClass;
+                document.getElementById('sentiment-label').textContent = sentimentLabel;
+                document.getElementById('sentiment-source').textContent = data.is_stock
+                    ? `Source: ${data.underlying_ticker || currentBaseAsset} stock news + RSI (crypto Fear & Greed excluded)`
+                    : 'Source: Crypto Fear & Greed Index';
+
+                // Update advisor display
+                document.getElementById('advisor-action').textContent = String(data.advisor_action || 'MONITOR').replaceAll('_', ' ');
+                document.getElementById('advisor-confidence').textContent = parseFloat(data.advisor_confidence || 0).toFixed(1);
+                document.getElementById('advisor-summary').textContent = data.advisor_summary || 'Waiting for market data';
+                document.getElementById('advisor-source').textContent = data.advisor_source || 'rules';
+                document.getElementById('media-sentiment').textContent = `${String(data.media_sentiment_label || 'neutral').toUpperCase()} (${parseFloat(data.media_sentiment_score || 50).toFixed(1)})`;
+                document.getElementById('media-summary').textContent = data.media_sentiment_summary || '';
+                document.getElementById('codex-status').textContent = String(data.codex_cli_status || 'not_checked').replaceAll('_', ' ').toUpperCase();
+                
+                // TWAP start signal indicator
+                const rsiReady = data.current_rsi < data.rsi_threshold;
+                if (data.status !== 'trading' && data.current_rsi <= data.twap_rsi_start_threshold) {
+                    rsiStatus.textContent = 'â­ TWAP START READY';
+                    rsiStatus.className = 'metric-value green';
+                }
+                
+                // Update position
+                document.getElementById('position').textContent = parseFloat(data.position_qty).toFixed(4);
+                document.getElementById('position-free').textContent = parseFloat(data.position_free_qty || 0).toFixed(4);
+                document.getElementById('position-locked').textContent = parseFloat(data.position_locked_qty || 0).toFixed(4);
+                document.getElementById('entry-price').textContent = data.entry_price ? '$' + parseFloat(data.entry_price).toFixed(2) : '-';
+                document.getElementById('cost-basis').textContent = parseFloat(data.position_cost_basis || 0).toFixed(2);
+                document.getElementById('cost-source').textContent = String(data.cost_basis_source || 'none').replaceAll('_', ' ').toUpperCase();
+                document.getElementById('twap-status').textContent = String(data.twap_status || 'idle').toUpperCase();
+                document.getElementById('twap-budget').textContent = parseFloat(data.twap_quote_budget || 0).toFixed(2);
+                
+                // Update profit
+                const profit = parseFloat(data.current_profit_usdt);
+                const profitElement = document.getElementById('profit');
+                profitElement.textContent = '$' + profit.toFixed(2);
+                profitElement.className = 'metric-value ' + (profit >= 0 ? 'green' : 'red');
+                
+                // Update profit bar
+                const target = parseFloat(data.target_profit_usdt);
+                document.getElementById('target').textContent = target.toFixed(2);
+                document.getElementById('suggested-target').textContent = parseFloat(data.target_profit_suggested_usdt || target).toFixed(2);
+                document.getElementById('target-suggestion-reason').textContent = data.target_profit_suggestion_reason || 'Waiting for suggestion';
+                const autoApply = Boolean(data.target_profit_auto_apply);
+                const autoMode = document.getElementById('auto-target-mode');
+                autoMode.textContent = autoApply ? 'AUTO SUGGESTED' : 'MANUAL';
+                autoMode.className = 'metric-value ' + (autoApply ? 'green' : 'neutral');
+                document.getElementById('target-auto-note').textContent = data.target_profit_auto_apply_note || 'Suggested target applies automatically.';
+                document.getElementById('target-sell-status').textContent = String(data.target_sell_status || 'idle').replaceAll('_', ' ').toUpperCase();
+                const targetSellPrice = parseFloat(data.target_sell_price || 0);
+                document.getElementById('target-sell-price').textContent = targetSellPrice > 0 ? targetSellPrice.toFixed(2) : '-';
+                const targetSellQty = parseFloat(data.target_sell_qty || 0);
+                document.getElementById('target-sell-qty').textContent = targetSellQty > 0 ? targetSellQty.toFixed(6) : '-';
+                document.getElementById('target-sell-interval').textContent = parseInt(data.target_sell_interval_seconds || 60, 10).toString();
+                const targetInput = document.getElementById('target-input');
+                if (document.activeElement !== targetInput) {
+                    targetInput.value = target.toFixed(2);
+                }
+                const progressPercent = Math.min((profit / target) * 100, 100);
+                document.getElementById('profit-bar').style.width = progressPercent + '%';
+                
+                // Update budget
+                const swingBudgetTotal = parseFloat(data.swing_cycle_budget_total ?? data.budget_total);
+                const swingBudgetRemaining = parseFloat(data.swing_cycle_budget_remaining ?? data.budget_remaining);
+                document.getElementById('budget-total').textContent = swingBudgetTotal.toFixed(0);
+                document.getElementById('budget-remaining').textContent = '$' + swingBudgetRemaining.toFixed(2);
+                document.getElementById('last-exit').textContent = data.last_exit_reason || '-';
+                const strategySelect = document.getElementById('strategy-select');
+                const strategyMode = String(data.strategy_mode || 'auto').toLowerCase();
+                if (strategySelect && document.activeElement !== strategySelect) {
+                    strategySelect.value = strategyMode;
+                }
+                const twapSwitchInput = document.getElementById('twap-switch-budget-input');
+                if (twapSwitchInput && document.activeElement !== twapSwitchInput) {
+                    twapSwitchInput.value = parseFloat(data.twap_auto_switch_budget_usdt || 1000).toFixed(0);
+                }
+                const startBudgetInput = document.getElementById('start-budget-input');
+                if (startBudgetInput && document.activeElement !== startBudgetInput) {
+                    startBudgetInput.value = parseFloat(data.budget_total || 5000).toFixed(0);
+                }
+                
+                // Update cycles
+                document.getElementById('cycles').textContent = data.cycles_completed;
+                
+                // Update button states
+                document.getElementById('btn-start').disabled = false;
+                document.getElementById('btn-stop').disabled = !data.can_stop;
+                document.getElementById('btn-restart').disabled = data.status !== 'completed' && data.status !== 'error';
+                canSwitchSymbol = Boolean(data.can_switch_symbol);
+                document.getElementById('btn-use-best').disabled = !bestCandidateSymbol;
+                
+                // Add data to charts
+                addChartData(data);
+
+                if (Date.now() - lastCandidateRefresh > 120000) {
+                    refreshCandidates(false);
+                }
+                
+            } catch (error) {
+                console.error('Failed to update status:', error);
+            }
+        }
+        
+        function addChartData(data) {
+            const now = new Date().toLocaleTimeString();
+            
+            chartData.timestamps.push(now);
+            chartData.volatility.push(data.volatility);
+            chartData.prices.push(data.current_price);
+            chartData.profits.push(parseFloat(data.current_profit_usdt));
+            chartData.rsi.push(parseFloat(data.current_rsi));
+            chartData.sentiment.push(parseFloat(data.market_sentiment));
+            
+            // Keep only last maxDataPoints
+            if (chartData.timestamps.length > maxDataPoints) {
+                chartData.timestamps.shift();
+                chartData.volatility.shift();
+                chartData.prices.shift();
+                chartData.profits.shift();
+                chartData.rsi.shift();
+                chartData.sentiment.shift();
+            }
+            
+            updateCharts();
+        }
+        
+        function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            font: { size: 11 }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: { size: 10 }
+                        }
+                    }
+                }
+            };
+            
+            // Volatility Chart
+            const volatilityCtx = document.getElementById('volatilityChart');
+            if (volatilityCtx) {
+                volatilityChart = new Chart(volatilityCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.timestamps,
+                        datasets: [{
+                            label: 'Volatility %',
+                            data: chartData.volatility,
+                            borderColor: '#0f766e',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#0f766e',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }, {
+                            label: 'Threshold (2%)',
+                            data: new Array(chartData.timestamps.length).fill(2),
+                            borderColor: '#dc3545',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: chartOptions
+                });
+            }
+            
+            // RSI Chart
+            const rsiCtx = document.getElementById('rsiChart');
+            if (rsiCtx) {
+                rsiChart = new Chart(rsiCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.timestamps,
+                        datasets: [{
+                            label: 'RSI (14)',
+                            data: chartData.rsi,
+                            borderColor: '#0f766e',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#0f766e',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }, {
+                            label: 'Oversold (30)',
+                            data: new Array(chartData.timestamps.length).fill(30),
+                            borderColor: '#28a745',
+                            borderWidth: 1,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0
+                        }, {
+                            label: 'Overbought (70)',
+                            data: new Array(chartData.timestamps.length).fill(70),
+                            borderColor: '#dc3545',
+                            borderWidth: 1,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        ...chartOptions,
+                        scales: {
+                            ...chartOptions.scales,
+                            y: {
+                                ...chartOptions.scales.y,
+                                min: 0,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Sentiment Chart
+            const sentimentCtx = document.getElementById('sentimentChart');
+            if (sentimentCtx) {
+                sentimentChart = new Chart(sentimentCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.timestamps,
+                        datasets: [{
+                            label: 'Fear & Greed Index',
+                            data: chartData.sentiment,
+                            borderColor: '#0f766e',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#0f766e',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }, {
+                            label: 'Fear/Greed Neutral (50)',
+                            data: new Array(chartData.timestamps.length).fill(50),
+                            borderColor: '#999',
+                            borderWidth: 1,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        ...chartOptions,
+                        scales: {
+                            ...chartOptions.scales,
+                            y: {
+                                ...chartOptions.scales.y,
+                                min: 0,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Price Chart
+            const priceCtx = document.getElementById('priceChart');
+            if (priceCtx) {
+                priceChart = new Chart(priceCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.timestamps,
+                        datasets: [{
+                            label: 'PAXG Price (USDT)',
+                            data: chartData.prices,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#28a745',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: chartOptions
+                });
+            }
+            
+            // Profit Chart
+            const profitCtx = document.getElementById('profitChart');
+            if (profitCtx) {
+                profitChart = new Chart(profitCtx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.timestamps,
+                        datasets: [{
+                            label: 'P&L (USDT)',
+                            data: chartData.profits,
+                            borderColor: function(context) {
+                                return context.dataset.data[context.dataIndex] >= 0 ? '#28a745' : '#dc3545';
+                            },
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointBackgroundColor: function(context) {
+                                return context.dataset.data[context.dataIndex] >= 0 ? '#28a745' : '#dc3545';
+                            },
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }, {
+                            label: 'Target ($10)',
+                            data: new Array(chartData.timestamps.length).fill(10),
+                            borderColor: '#ffc107',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: chartOptions
+                });
+            }
+        }
+        
+        function updateCharts() {
+            if (volatilityChart) {
+                volatilityChart.data.labels = chartData.timestamps;
+                volatilityChart.data.datasets[0].data = chartData.volatility;
+                volatilityChart.data.datasets[1].data = new Array(chartData.timestamps.length).fill(2);
+                volatilityChart.update('none');
+            }
+            
+            if (rsiChart) {
+                rsiChart.data.labels = chartData.timestamps;
+                rsiChart.data.datasets[0].data = chartData.rsi;
+                rsiChart.data.datasets[1].data = new Array(chartData.timestamps.length).fill(30);
+                rsiChart.data.datasets[2].data = new Array(chartData.timestamps.length).fill(70);
+                rsiChart.update('none');
+            }
+            
+            if (sentimentChart) {
+                sentimentChart.data.labels = chartData.timestamps;
+                sentimentChart.data.datasets[0].data = chartData.sentiment;
+                sentimentChart.data.datasets[1].data = new Array(chartData.timestamps.length).fill(50);
+                sentimentChart.update('none');
+            }
+            
+            if (priceChart) {
+                priceChart.data.labels = chartData.timestamps;
+                priceChart.data.datasets[0].label = `${currentBaseAsset} Price (USDT)`;
+                priceChart.data.datasets[0].data = chartData.prices;
+                priceChart.update('none');
+            }
+            
+            if (profitChart) {
+                profitChart.data.labels = chartData.timestamps;
+                profitChart.data.datasets[0].data = chartData.profits;
+                profitChart.data.datasets[1].data = new Array(chartData.timestamps.length).fill(10);
+                profitChart.update('none');
+            }
+        }
+
+        function populateSymbolSelect(instruments, selectedSymbol) {
+            const select = document.getElementById('symbol-select');
+            if (!Array.isArray(instruments) || !instruments.length) return;
+            const rows = instruments.map((item) => typeof item === 'string'
+                ? { symbol: item, instrument_type: 'crypto' }
+                : item
+            ).filter((item) => item && item.symbol);
+            const symbols = rows.map((item) => item.symbol);
+            if (!symbols.length) return;
+            supportedSymbols = symbols.slice();
+            const nextSymbolKey = rows.map((item) => `${item.symbol}:${item.instrument_type || 'crypto'}`).join('|');
+            if (!supportedSymbolsLoaded || nextSymbolKey !== supportedSymbolKey) {
+                select.innerHTML = rows.map((item) => {
+                    const type = String(item.instrument_type || 'crypto').toUpperCase();
+                    return `<option value="${item.symbol}">${item.symbol} · ${type}</option>`;
+                }).join('');
+                supportedSymbolsLoaded = true;
+                supportedSymbolKey = nextSymbolKey;
+                const loadedTabs = loadPairTabs().filter((symbol) => symbols.includes(symbol));
+                pairTabs = loadedTabs;
+                if (!pairTabs.length) {
+                    pairTabs = [selectedSymbol || symbols[0]];
+                }
+                savePairTabs();
+            }
+            if (document.activeElement !== select) {
+                select.value = selectedSymbol;
+            }
+        }
+
+        async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                const data = await response.json();
+                return { response, data };
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        async function renderFastCandidateFallback() {
+            try {
+                const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/api/bot/pairs`, 5000);
+                if (!response.ok || !Array.isArray(data.pairs)) {
+                    throw new Error('Unable to load pairs');
+                }
+                const list = data.pairs.map((item) => ({
+                    symbol: item.symbol,
+                    score: Number(item.current_profit_usdt || 0),
+                    reason: `Live P&L ${Number(item.current_profit_usdt || 0).toFixed(3)} USDT`,
+                })).sort((a, b) => b.score - a.score);
+                renderCandidates({
+                    best: list.length ? list[0] : null,
+                    candidates: list,
+                });
+            } catch (error) {
+                document.getElementById('best-symbol').textContent = 'Unavailable';
+                document.getElementById('best-score').textContent = '-';
+            }
+        }
+
+        async function refreshCandidates(force) {
+            try {
+                lastCandidateRefresh = Date.now();
+                if (force) {
+                    document.getElementById('best-symbol').textContent = 'Refreshing...';
+                }
+                const selectedSymbol = activeTabSymbol || currentSymbol;
+                let response;
+                let data;
+                const timeoutMs = force ? 14000 : 9000;
+
+                if (selectedSymbol) {
+                    const candidateSymbol = encodeURIComponent(selectedSymbol);
+                    ({ response, data } = await fetchJsonWithTimeout(`${API_BASE}/api/bot/candidates?symbol=${candidateSymbol}${force ? '&refresh=1' : ''}`, timeoutMs));
+                } else {
+                    ({ response, data } = await fetchJsonWithTimeout(`${API_BASE}/api/bot/candidates?refresh=${force ? '1' : '0'}`, timeoutMs));
+                }
+
+                if (!response.ok && selectedSymbol) {
+                    // Local tab state can point to a removed pair; retry using server default active pair.
+                    ({ response, data } = await fetchJsonWithTimeout(`${API_BASE}/api/bot/candidates?refresh=${force ? '1' : '0'}`, timeoutMs));
+                    if (response.ok && data && data.selected_symbol) {
+                        currentSymbol = data.selected_symbol;
+                        activeTabSymbol = data.selected_symbol;
+                    }
+                }
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unable to load pair candidates');
+                }
+                renderCandidates(data);
+            } catch (error) {
+                await renderFastCandidateFallback();
+            }
+        }
+
+        function renderCandidates(data) {
+            const best = data.best;
+            const list = data.candidates || [];
+            bestCandidateSymbol = best ? best.symbol : null;
+            document.getElementById('best-symbol').textContent = best ? best.symbol : 'None';
+            document.getElementById('best-score').textContent = best ? best.score.toFixed(2) : '-';
+            document.getElementById('btn-use-best').disabled = !canSwitchSymbol || !bestCandidateSymbol;
+            document.getElementById('candidate-list').innerHTML = list.slice(0, 5).map((candidate, index) => `
+                <div class="candidate-item ${index === 0 ? 'best' : ''}">
+                    <span class="candidate-symbol">${candidate.symbol} · ${String(candidate.instrument_type || 'crypto').toUpperCase()}</span>
+                    <span class="candidate-score">${candidate.score.toFixed(1)}</span>
+                    <span class="candidate-reason">${candidate.reason}</span>
+                </div>
+            `).join('');
+        }
+
+        async function useBestCandidate() {
+            if (!bestCandidateSymbol) return;
+            await addPairTab(bestCandidateSymbol);
+        }
+
+        async function setTargetProfit() {
+            const target = parseFloat(document.getElementById('target-input').value);
+            if (!Number.isFinite(target)) {
+                showMessage('Enter a valid target profit', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/target`, {
+                    method: 'POST',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol: activeTabSymbol || currentSymbol, target_profit_usdt: target })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unable to update target');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error updating target: ' + error.message, 'error');
+            }
+        }
+
+        async function applySuggestedTarget() {
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/target`, {
+                    method: 'POST',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol: activeTabSymbol || currentSymbol, use_suggestion: true })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unable to apply suggested target');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error applying suggestion: ' + error.message, 'error');
+            }
+        }
+
+        async function closeAllToUsdt() {
+            const confirmed = confirm('Cancel open bot/spot orders and market-sell all free direct-USDT spot balances?');
+            if (!confirmed) {
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/close-all`, {
+                    method: 'POST',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol: activeTabSymbol || currentSymbol })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to close all positions');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error closing all positions: ' + error.message, 'error');
+            }
+        }
+
+        async function startBot() {
+            try {
+                const selectedFromDropdown = document.getElementById('symbol-select')?.value || '';
+                const requestedSymbol = selectedFromDropdown || activeTabSymbol || currentSymbol;
+                const budgetInput = parseFloat(document.getElementById('start-budget-input')?.value || '5000');
+                const strategyMode = document.getElementById('strategy-select')?.value || 'auto';
+                const twapSwitchBudget = parseFloat(document.getElementById('twap-switch-budget-input')?.value || '1000');
+                const response = await fetch(`${API_BASE}/api/bot/start`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({
+                        symbol: requestedSymbol,
+                        budget: Number.isFinite(budgetInput) ? budgetInput : 5000,
+                        duration_hours: 12,
+                        strategy_mode: strategyMode,
+                        force_start: true,
+                        twap_switch_budget_usdt: Number.isFinite(twapSwitchBudget) ? twapSwitchBudget : 1000,
+                    })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to start bot');
+                }
+                if (requestedSymbol) {
+                    activeTabSymbol = requestedSymbol;
+                    currentSymbol = requestedSymbol;
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error starting bot: ' + error.message, 'error');
+            }
+        }
+
+        async function setStrategyMode() {
+            const strategyMode = document.getElementById('strategy-select')?.value || 'auto';
+            const twapSwitchBudget = parseFloat(document.getElementById('twap-switch-budget-input')?.value || '1000');
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/strategy`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({
+                        symbol: activeTabSymbol || currentSymbol,
+                        strategy_mode: strategyMode,
+                        twap_switch_budget_usdt: Number.isFinite(twapSwitchBudget) ? twapSwitchBudget : 1000,
+                    })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to update strategy');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error updating strategy: ' + error.message, 'error');
+            }
+        }
+
+        async function stopBot() {
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/stop`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol: activeTabSymbol || currentSymbol })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to stop bot');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error stopping bot: ' + error.message, 'error');
+            }
+        }
+
+        async function restartBot() {
+            try {
+                const response = await fetch(`${API_BASE}/api/bot/restart`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: buildActionAuthHeaders(true),
+                    body: JSON.stringify({ symbol: activeTabSymbol || currentSymbol })
+                });
+                const data = await parseApiJsonSafe(response);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        revealAuthSettingsForUnauthorized();
+                    }
+                    throw new Error(data.error || 'Unable to restart bot');
+                }
+                showMessage(data.message, 'success');
+                await updateStatus();
+            } catch (error) {
+                showMessage('Error restarting bot: ' + error.message, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const msgElement = document.getElementById('message');
+            msgElement.innerHTML = `<div class="message ${type}">${message}</div>`;
+            setTimeout(() => { msgElement.innerHTML = ''; }, 5000);
+        }
+
+        // Initialize
+        updateTokenSetupVisibility();
+        initCharts();
+        refreshPairProfits();
+        updateStatus();
+        refreshCandidates(false);
+        setInterval(refreshPairProfits, 15000);
+        updateInterval = setInterval(updateStatus, 2000); // Update every 2 seconds
+    </script>
+{% if not fragment %}
+</body>
+</html>
+{% endif %}

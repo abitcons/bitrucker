@@ -1,0 +1,64 @@
+{
+  "dry_run": false,
+  "poll_interval_seconds": 30,
+  "profit_target_usd": "40.00",
+  "profit_target_pct": "2.25",
+  "stable_quote_assets": ["USDT", "FDUSD", "USDC", "BUSD"],
+  "exclude_assets": ["USDT", "FDUSD", "USDC", "BUSD", "BNB"],
+  "default_reentry_quote_budget_usd": "700.00",
+  "default_twap_duration_seconds": 3600,
+  "algo_confirmation_grace_seconds": 120,
+  "notify_on_slice": true,
+  "dashboard_url": "https://bitrucker.com/bot",
+  "assets": {
+    "BTC": {
+      "enabled": true,
+      "symbol": "BTCUSDT",
+      "reentry_quote_budget_usd": "700.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "ETH": {
+      "enabled": true,
+      "symbol": "ETHUSDT",
+      "reentry_quote_budget_usd": "700.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "SOL": {
+      "enabled": true,
+      "symbol": "SOLUSDT",
+      "reentry_quote_budget_usd": "650.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "LINK": {
+      "enabled": true,
+      "symbol": "LINKUSDT",
+      "reentry_quote_budget_usd": "600.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "PAXG": {
+      "enabled": true,
+      "symbol": "PAXGUSDT",
+      "reentry_quote_budget_usd": "550.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "EPIC": {
+      "enabled": true,
+      "symbol": "EPICUSDT",
+      "reentry_quote_budget_usd": "700.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    },
+    "UNI": {
+      "enabled": true,
+      "symbol": "UNIUSDT",
+      "reentry_quote_budget_usd": "700.00",
+      "twap_duration_seconds": 3600,
+      "start_cycle_when_flat": true
+    }
+  }
+}

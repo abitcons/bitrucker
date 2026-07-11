@@ -1,0 +1,45 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First setup | BitRucker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='saas.css', v='20260627-2') }}">
+</head>
+<body class="auth-body">
+  <main class="auth-card setup-card">
+    <div class="brand auth-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6" y="4" width="20" height="24" rx="4" fill="currentColor" opacity="0.9"/>
+          <text x="16" y="22" font-size="18" font-weight="900" text-anchor="middle" fill="white" font-family="serif">B</text>
+          <rect x="11" y="2" width="2.5" height="28" rx="1" fill="white"/>
+          <rect x="18.5" y="2" width="2.5" height="28" rx="1" fill="white"/>
+        </svg>
+      </span>
+      <div>
+        <strong>BitRucker</strong>
+        <small>First-run setup</small>
+      </div>
+    </div>
+    <h1>Create owner and admin accounts</h1>
+    <p>This one-time setup page is available only until the first admin account exists.</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('setup_post') }}" class="form-stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Owner email<input name="owner_email" value="jimran@abitcons.com" autocomplete="username" required></label>
+      <label>Owner password<input name="owner_password" type="password" autocomplete="new-password" required></label>
+      <label>Confirm owner password<input name="owner_confirm" type="password" autocomplete="new-password" required></label>
+      <hr>
+      <label>Admin username<input name="admin_login" value="admin" autocomplete="username" required></label>
+      <label>Admin password<input name="admin_password" type="password" autocomplete="new-password" required></label>
+      <label>Confirm admin password<input name="admin_confirm" type="password" autocomplete="new-password" required></label>
+      <button class="primary-button" type="submit">Finish setup</button>
+    </form>
+  </main>
+</body>
+</html>

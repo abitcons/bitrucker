@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ 'Terms of Service' if document == 'terms' else 'Privacy Policy' if document == 'privacy' else 'Risk Disclosure' }} | BitRucker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='saas.css') }}">
+  <style>
+    body { margin:0; background:#f4f7f6; color:#17211f; font-family:"Aptos","Segoe UI",sans-serif; }
+    main { width:min(900px,calc(100% - 32px)); margin:32px auto; padding:32px; box-sizing:border-box; background:white; border:1px solid #dce6e2; border-radius:12px; }
+    h1,h2 { color:#154f49; } h2 { margin-top:28px; } li,p { line-height:1.65; } .notice { padding:14px; border-left:4px solid #c27a18; background:#fff7e8; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="{{ url_for('index') }}">← Back to BitRucker</a></p>
+
+  {% if document == 'terms' %}
+    <h1>Terms of Service</h1>
+    <p>Version {{ legal_version }} · Operator: {{ operator_name }}</p>
+    <p class="notice"><strong>Pre-launch legal notice:</strong> these terms are a product safety baseline and must be reviewed by qualified counsel for every jurisdiction offered before public launch.</p>
+    <h2>Service</h2>
+    <p>BitRucker provides software that monitors markets and, when explicitly enabled, sends trading instructions to exchanges through user-authorized API credentials. BitRucker is not an exchange, broker, custodian, bank, fiduciary, tax adviser, or guarantee of investment performance.</p>
+    <h2>User responsibilities</h2>
+    <ul>
+      <li>You must be legally eligible to use the service and the connected exchange in your location.</li>
+      <li>You remain responsible for strategy selection, risk limits, account permissions, taxes, and every resulting trade.</li>
+      <li>API keys must have trading and read permissions only. Withdrawal or transfer permissions must be disabled.</li>
+      <li>You must verify symbols, instrument type, fees, liquidity, and order state at the exchange before relying on the application display.</li>
+    </ul>
+    <h2>No performance promise</h2>
+    <p>Examples, scores, AI outputs, simulations, backtests, and past results are informational and do not predict future results. No strategy is foolproof. Orders may be delayed, rejected, partially filled, or filled at a different price.</p>
+    <h2>Availability and changes</h2>
+    <p>The service may be suspended for maintenance, exchange outages, security events, regulatory requirements, or risk control. Features and supported venues may change. Users should maintain independent exchange access and monitor live positions.</p>
+    <h2>Prohibited use</h2>
+    <p>You may not use the service for market manipulation, unlawful trading, sanctions evasion, unauthorized access, credential sharing, or activity prohibited by an exchange or applicable law.</p>
+    <h2>Liability</h2>
+    <p>To the extent permitted by applicable law, {{ operator_name }} is not liable for trading losses, missed opportunities, exchange failures, token depegging, market data errors, or indirect damages. Mandatory consumer rights are not excluded.</p>
+    <h2>Governing law</h2>
+    <p>{{ governing_law }}. Contact {{ support_email }} with legal or service questions.</p>
+
+  {% elif document == 'privacy' %}
+    <h1>Privacy Policy</h1>
+    <p>Version {{ legal_version }} · Controller: {{ operator_name }}</p>
+    <p class="notice"><strong>Pre-launch privacy notice:</strong> retention periods, subprocessors, hosting regions, and statutory contact details must be finalized with privacy counsel before public launch.</p>
+    <h2>Data collected</h2>
+    <ul>
+      <li>Account data such as email, password hash, subscription status, and legal acceptance records.</li>
+      <li>Encrypted exchange API credentials, connection metadata, bot settings, orders, fills, balances, and performance data.</li>
+      <li>Security and operational data including IP address, browser user agent, request identifiers, audit events, and error logs.</li>
+      <li>Payment invoice and transaction-reference data. BitRucker should not collect exchange withdrawal credentials or wallet seed phrases.</li>
+    </ul>
+    <h2>Use of data</h2>
+    <p>Data is used to authenticate users, operate requested automation, reconcile exchange activity, enforce risk and subscription controls, prevent abuse, provide support, and meet legal obligations.</p>
+    <h2>Security</h2>
+    <p>Sensitive credentials are encrypted at rest and should be decrypted only within the execution service. No system is perfectly secure. Users should use unique trade-only API keys, IP allowlisting, and exchange-side alerts.</p>
+    <h2>Sharing and international processing</h2>
+    <p>Data may be processed by hosting, monitoring, payment, email, market-data, AI, and exchange providers only as required to deliver the service. A production subprocessor list and data-processing agreements must be published before launch.</p>
+    <h2>Retention and rights</h2>
+    <p>Data should be kept only as long as necessary for service, security, accounting, and legal requirements. Depending on location, users may have rights to access, correct, export, restrict, or delete personal data. Requests can be sent to {{ support_email }}.</p>
+
+  {% else %}
+    <h1>Trading Risk Disclosure</h1>
+    <p>Version {{ legal_version }}</p>
+    <p class="notice"><strong>You can lose some or all capital allocated to automated trading.</strong> Do not trade money you cannot afford to lose.</p>
+    <h2>Automation and AI risk</h2>
+    <p>Rules and AI can be wrong, stale, overfit, or unsuitable for current conditions. Human review remains necessary. A bot can continue executing consistently even when its assumptions are no longer valid.</p>
+    <h2>Market and execution risk</h2>
+    <ul>
+      <li>Prices can gap, liquidity can disappear, and stop orders are not guaranteed execution prices.</li>
+      <li>Fees, spread, slippage, funding costs, taxes, and partial fills can turn an apparent gain into a net loss.</li>
+      <li>Exchange downtime, rate limits, API changes, credential revocation, and network failures can leave orders or positions unmanaged.</li>
+      <li>Low-liquidity assets can be manipulated and may become impossible to exit near the displayed price.</li>
+    </ul>
+    <h2>Crypto and tokenized-stock risk</h2>
+    <p>Crypto assets may be highly volatile and can lose all value. Tokenized stocks are not necessarily direct shares: they may provide price exposure without voting, dividend, insolvency, or shareholder rights. They add issuer, custodian, smart-contract, depegging, jurisdiction, market-hours, and liquidity risks.</p>
+    <h2>Backtest and paper-trading limits</h2>
+    <p>Simulations may omit latency, order-book impact, delistings, changing fees, outages, taxes, and survivorship bias. Paper results are not live results.</p>
+    <h2>Recommended controls</h2>
+    <p>Begin in paper mode, use small allocations, set account and strategy loss limits, disable withdrawals, use IP allowlists, independently verify open orders, and retain direct access to the exchange emergency controls.</p>
+  {% endif %}
+</main>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Cloudflare Tunnel Configuration
+# This file tells Cloudflare Tunnel how to route traffic to your bot
+
+tunnel: binance-bot
+credentials-file: C:\Users\Jimran\.cloudflared\d65cbf3f-f422-430c-bbea-11c8ba0a13bb.json
+
+ingress:
+  - hostname: bitrucker.com
+    service: http://localhost:8000
+  - hostname: www.bitrucker.com
+    service: http://localhost:8000
+  - hostname: binance-bot.abit.ai
+    service: http://localhost:8000
+  - hostname: btcusdt.abit.ai
+    service: http://localhost:8000
+  - hostname: bot.abit.ai
+    service: http://localhost:8000
+  - service: http_status:404

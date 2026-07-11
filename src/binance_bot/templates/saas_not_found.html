@@ -1,0 +1,14 @@
+﻿{% extends "saas_base.html" %}
+{% block title %}Page not found | BitRucker{% endblock %}
+{% block heading %}Page not found{% endblock %}
+{% block content %}
+<section class="panel-card wide">
+  <span class="eyebrow">Missing route</span>
+  <h2>{{ requested_path }} is not available</h2>
+  <p>The page may have moved. Open the bot marketplace or return to the overview.</p>
+  <div class="button-row">
+    <a class="primary-button" href="{{ url_for('saas_home') }}">Overview</a>
+    <a class="secondary-button" href="{{ url_for('saas_bots') }}">Bot Marketplace</a>
+  </div>
+</section>
+{% endblock %}

@@ -1,235 +1,159 @@
-# ![freqtrade](https://raw.githubusercontent.com/freqtrade/freqtrade/develop/docs/assets/freqtrade_poweredby.svg)
+﻿# Binance Profit Cycle Bot
 
-[![Freqtrade CI](https://github.com/freqtrade/freqtrade/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/freqtrade/freqtrade/actions/workflows/ci.yml)
-[![DOI](https://joss.theoj.org/papers/10.21105/joss.04864/status.svg)](https://doi.org/10.21105/joss.04864)
-[![codecov](https://codecov.io/gh/freqtrade/freqtrade/branch/develop/graph/badge.svg?token=AD5BG3ATKI)](https://codecov.io/gh/freqtrade/freqtrade)
-[![Documentation](https://readthedocs.org/projects/freqtrade/badge/)](https://www.freqtrade.io)
-[![Discord Server](https://img.shields.io/badge/Freqtrade_Discord-4E4E4E?logo=discord)](https://discord.gg/p7nuUNVfP7)
+> **Private beta:** this repository now powers the BitRucker multi-asset trading agent, including Binance, Bitget crypto, and supported Bitget tokenized market instruments. It is not yet approved for public multi-customer live trading.
 
-Freqtrade is a free and open source crypto trading bot written in Python. It is designed to support all major exchanges and be controlled via Telegram or webUI. It contains backtesting, plotting and money management tools as well as strategy optimization by machine learning.
+The fail-closed production gate is available at `/health/ready`; owner/admin users can inspect the full **Launch Readiness** scorecard in the application. See [MARKET_READINESS.md](MARKET_READINESS.md) for the competitor benchmark, critical blockers, product rules, and implementation roadmap.
 
-![freqtrade](https://raw.githubusercontent.com/freqtrade/freqtrade/develop/docs/assets/freqtrade-screenshot.png)
+Customer fleets now have isolated credentials, runtime state, pair limits, and paper execution. Customer live orders remain disabled; the existing live fleet is owner-only. A durable emergency switch blocks new entries without disabling stop/close and protective-exit paths. No automated strategy is guaranteed or foolproof.
 
-## Disclaimer
+This project began as a spot trading loop for Binance with Telegram notifications.
 
-This software is for educational purposes only. Do not risk money which
-you are afraid to lose. USE THE SOFTWARE AT YOUR OWN RISK. THE AUTHORS
-AND ALL AFFILIATES ASSUME NO RESPONSIBILITY FOR YOUR TRADING RESULTS.
+The bot does four things:
 
-Always start by running a trading bot in Dry-Run and do not engage money
-before you understand how it works and what profit/loss you should
-expect.
+1. Reads your current spot balances.
+2. Rebuilds each asset's buy price from historical fills instead of using Binance's average price.
+3. Tracks profit across the managed strategy assets as a whole.
+4. When the managed strategy reaches the configured exit threshold, it stops every managed TWAP, sells managed holdings, and starts the participating allowed strategies over.
 
-We strongly recommend you to have coding and Python knowledge. Do not
-hesitate to read the source code and understand the mechanism of this bot.
+## Strategy Refinement
 
-## Supported Exchange marketplaces
+Your requested strategy was refined into an explicit and safer execution model:
 
-Please read the [exchange-specific notes](https://www.freqtrade.io/en/stable/exchanges/) to learn about special configurations that maybe needed for each exchange.
+1. Only trade assets listed in `strategy.json` or assets you already hold with a supported stablecoin symbol.
+2. Rebuild cost basis from historical fills using FIFO lots. This handles partial sells and avoids relying on Binance's reported average entry.
+3. The managed assets are treated as one strategy basket for automatic exits.
+4. A managed basket exit now requires both the configured USD profit and the configured profit percent threshold, which reduces churn from tiny favorable moves.
+5. Auto-start only happens when a managed asset is effectively flat. The bot will not average into an existing managed position just because a TWAP is idle.
+6. When combined unrealized profit across the managed assets reaches the configured exit threshold, the bot cancels the managed Spot Algo Orders, sells the managed holdings, and restarts the participating allowed strategies.
+7. The bot monitors the exchange-managed TWAP orders, their sub-orders, and your live positions rather than scheduling local slices itself.
 
-### Supported Spot Exchanges
+For development, keep IIS synced directly to this workspace:
 
-- [X] [Binance](https://www.binance.com/)
-- [X] [BingX](https://bingx.com/invite/0EM9RX)
-- [X] [Bitget](https://www.bitget.com/)
-- [X] [Bitmart](https://bitmart.com/)
-- [X] [Bybit](https://bybit.com/)
-- [X] [Gate.io](https://www.gate.io/ref/6266643)
-- [X] [HTX](https://www.htx.com/)
-- [X] [Hyperliquid](https://hyperliquid.xyz/) (A decentralized exchange, or DEX)
-- [X] [Kraken](https://kraken.com/)
-- [X] [OKX](https://okx.com/)
-- [X] [MyOKX](https://okx.com/) (OKX EEA)
-- [ ] [potentially many others](https://github.com/ccxt/ccxt/). _(We cannot guarantee they will work)_
-
-### Supported Futures Exchanges
-
-- [X] [Binance](https://www.binance.com/)
-- [X] [Bitget](https://www.bitget.com/)
-- [X] [Gate.io](https://www.gate.io/ref/6266643)
-- [X] [Hyperliquid](https://hyperliquid.xyz/) (A decentralized exchange, or DEX)
-- [X] [OKX](https://okx.com/)
-- [X] [Bybit](https://bybit.com/)
-- [X] [Kraken](https://www.kraken.com/features/futures)
-
-Please make sure to read the [exchange specific notes](https://www.freqtrade.io/en/stable/exchanges/), as well as the [trading with leverage](https://www.freqtrade.io/en/stable/leverage/) documentation before diving in.
-
-### Community tested
-
-Exchanges confirmed working by the community:
-
-- [X] [Bitvavo](https://bitvavo.com/)
-- [X] [Kucoin](https://www.kucoin.com/)
-
-## Documentation
-
-We invite you to read the bot documentation to ensure you understand how the bot is working.
-
-Please find the complete documentation on the [freqtrade website](https://www.freqtrade.io).
-
-## Features
-
-- [x] **Based on Python 3.11+**: For botting on any operating system - Windows, macOS and Linux.
-- [x] **Persistence**: Persistence is achieved through sqlite.
-- [x] **Dry-run**: Run the bot without paying money.
-- [x] **Backtesting**: Run a simulation of your buy/sell strategy.
-- [x] **Strategy Optimization by machine learning**: Use machine learning to optimize your buy/sell strategy parameters with real exchange data.
-- [X] **Adaptive prediction modeling**: Build a smart strategy with FreqAI that self-trains to the market via adaptive machine learning methods. [Learn more](https://www.freqtrade.io/en/stable/freqai/)
-- [x] **Whitelist crypto-currencies**: Select which crypto-currency you want to trade or use dynamic whitelists.
-- [x] **Blacklist crypto-currencies**: Select which crypto-currency you want to avoid.
-- [x] **Builtin WebUI**: Builtin web UI to manage your bot.
-- [x] **Manageable via Telegram**: Manage the bot with Telegram.
-- [x] **Display profit/loss in fiat**: Display your profit/loss in fiat currency.
-- [x] **Performance status report**: Provide a performance status of your current trades.
-
-## Quick start
-
-Please refer to the [Docker Quickstart documentation](https://www.freqtrade.io/en/stable/docker_quickstart/) on how to get started quickly.
-
-For further (native) installation methods, please refer to the [Installation documentation page](https://www.freqtrade.io/en/stable/installation/).
-
-## Basic Usage
-
-### Bot commands
-
-```
-usage: freqtrade [-h] [-V]
-                 {trade,create-userdir,new-config,show-config,new-strategy,download-data,convert-data,convert-trade-data,trades-to-ohlcv,list-data,backtesting,backtesting-show,backtesting-analysis,edge,hyperopt,hyperopt-list,hyperopt-show,list-exchanges,list-markets,list-pairs,list-strategies,list-hyperoptloss,list-freqaimodels,list-timeframes,show-trades,test-pairlist,convert-db,install-ui,plot-dataframe,plot-profit,webserver,strategy-updater,lookahead-analysis,recursive-analysis}
-                 ...
-
-Free, open source crypto trading bot
-
-positional arguments:
-  {trade,create-userdir,new-config,show-config,new-strategy,download-data,convert-data,convert-trade-data,trades-to-ohlcv,list-data,backtesting,backtesting-show,backtesting-analysis,edge,hyperopt,hyperopt-list,hyperopt-show,list-exchanges,list-markets,list-pairs,list-strategies,list-hyperoptloss,list-freqaimodels,list-timeframes,show-trades,test-pairlist,convert-db,install-ui,plot-dataframe,plot-profit,webserver,strategy-updater,lookahead-analysis,recursive-analysis}
-    trade               Trade module.
-    create-userdir      Create user-data directory.
-    new-config          Create new config
-    show-config         Show resolved config
-    new-strategy        Create new strategy
-    download-data       Download backtesting data.
-    convert-data        Convert candle (OHLCV) data from one format to
-                        another.
-    convert-trade-data  Convert trade data from one format to another.
-    trades-to-ohlcv     Convert trade data to OHLCV data.
-    list-data           List downloaded data.
-    backtesting         Backtesting module.
-    backtesting-show    Show past Backtest results
-    backtesting-analysis
-                        Backtest Analysis module.
-    hyperopt            Hyperopt module.
-    hyperopt-list       List Hyperopt results
-    hyperopt-show       Show details of Hyperopt results
-    list-exchanges      Print available exchanges.
-    list-markets        Print markets on exchange.
-    list-pairs          Print pairs on exchange.
-    list-strategies     Print available strategies.
-    list-hyperoptloss   Print available hyperopt loss functions.
-    list-freqaimodels   Print available freqAI models.
-    list-timeframes     Print available timeframes for the exchange.
-    show-trades         Show trades.
-    test-pairlist       Test your pairlist configuration.
-    convert-db          Migrate database to different system
-    install-ui          Install FreqUI
-    plot-dataframe      Plot candles with indicators.
-    plot-profit         Generate plot showing profits.
-    webserver           Webserver module.
-    strategy-updater    updates outdated strategy files to the current version
-    lookahead-analysis  Check for potential look ahead bias.
-    recursive-analysis  Check for potential recursive formula issue.
-
-options:
-  -h, --help            show this help message and exit
-  -V, --version         show program's version number and exit
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\install_iis_dev_sync_task.ps1
 ```
 
-### Telegram RPC commands
+Run it from an elevated PowerShell prompt once. It installs the `BinanceBotIisDevSync` scheduled task, which watches this workspace and recycles the IIS app pool when Python, template, CSS, JavaScript, JSON, or config files change. IIS serves the files directly from `C:\Code\Imran\binance_bot`, so what you edit here is what IIS runs.
+8. Manual stop, allow, and sell controls still work per asset.
+9. Every meaningful event can be pushed to Telegram.
+10. Each managed asset can be paused or allowed independently from Telegram and the dashboard.
 
-Telegram is not mandatory. However, this is a great way to control your bot. More details and the full command list on the [documentation](https://www.freqtrade.io/en/stable/telegram-usage/)
+## Files
 
-- `/start`: Starts the trader.
-- `/stop`: Stops the trader.
-- `/stopentry`: Stop entering new trades.
-- `/status <trade_id>|[table]`: Lists all or specific open trades.
-- `/profit [<n>]`: Lists cumulative profit from all finished trades, over the last n days.
-- `/profit_long [<n>]`: Lists cumulative profit from all finished long trades, over the last n days.
-- `/profit_short [<n>]`: Lists cumulative profit from all finished short trades, over the last n days.
-- `/forceexit <trade_id>|all`: Instantly exits the given trade (Ignoring `minimum_roi`).
-- `/fx <trade_id>|all`: Alias to `/forceexit`
-- `/performance`: Show performance of each finished trade grouped by pair
-- `/balance`: Show account balance per currency.
-- `/daily <n>`: Shows profit or loss per day, over the last n days.
-- `/help`: Show help message.
-- `/version`: Show version.
+- `strategy.json`: Strategy and per-asset settings.
+- `.env`: Exchange and Telegram credentials. Keep this private.
+- `runtime/state.json`: Persistent Spot Algo TWAP cycle state created automatically.
 
+## Setup
 
-## Development branches
+1. Create and activate a Python environment.
+2. Install dependencies:
 
-The project is currently setup in two main branches:
+```powershell
+pip install -r requirements.txt
+```
 
-- `develop` - This branch has often new features, but might also contain breaking changes. We try hard to keep this branch as stable as possible.
-- `stable` - This branch contains the latest stable release. This branch is generally well tested.
-- `feat/*` - These are feature branches, which are being worked on heavily. Please don't use these unless you want to test a specific feature.
+3. Keep your existing `.env` and add these optional variables if needed:
 
-## Support
+```dotenv
+NOTIFICATIONS_ENABLED=true
+DASHBOARD_URL=http://127.0.0.1:8000/
+```
 
-### Help / Discord
+4. Review `strategy.json` carefully.
+5. Leave `dry_run` as `true` until you are satisfied with the summary output. The checked-in `strategy.json` now defaults to `dry_run: true`.
 
-For any questions not covered by the documentation or for further information about the bot, or to simply engage with like-minded individuals, we encourage you to join the Freqtrade [discord server](https://discord.gg/p7nuUNVfP7).
+## IIS Development Hosting
 
-### [Bugs / Issues](https://github.com/freqtrade/freqtrade/issues?q=is%3Aissue)
+Deploy the app to IIS from an elevated PowerShell prompt:
 
-If you discover a bug in the bot, please
-[search the issue tracker](https://github.com/freqtrade/freqtrade/issues?q=is%3Aissue)
-first. If it hasn't been reported, please
-[create a new issue](https://github.com/freqtrade/freqtrade/issues/new/choose) and
-ensure you follow the template guide so that the team can assist you as
-quickly as possible.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\deploy_iis.ps1
+```
 
-For every [issue](https://github.com/freqtrade/freqtrade/issues/new/choose) created, kindly follow up and mark satisfaction or reminder to close issue when equilibrium ground is reached.
+IIS serves the workspace directly from `C:\Code\Imran\binance_bot`; there is no separate copied publish folder. To keep IIS aligned while developing, install the dev sync watcher once from an elevated PowerShell prompt:
 
---Maintain github's [community policy](https://docs.github.com/en/site-policy/github-terms/github-community-code-of-conduct)--
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\install_iis_dev_sync_task.ps1
+```
 
-### [Feature Requests](https://github.com/freqtrade/freqtrade/labels/enhancement)
+That installs the `BinanceBotIisDevSync` scheduled task. It watches Python, template, CSS, JavaScript, JSON, and config files in this workspace and recycles the IIS app pool after changes, so the IIS app uses the same code you are editing.
 
-Have you a great idea to improve the bot you want to share? Please,
-first search if this feature was not [already discussed](https://github.com/freqtrade/freqtrade/labels/enhancement).
-If it hasn't been requested, please
-[create a new request](https://github.com/freqtrade/freqtrade/issues/new/choose)
-and ensure you follow the template guide so that it does not get lost
-in the bug reports.
+## Usage
 
-### [Pull Requests](https://github.com/freqtrade/freqtrade/pulls)
+Show a one-time portfolio summary:
 
-Feel like the bot is missing a feature? We welcome your pull requests!
+```powershell
+python main.py summary
+```
 
-Please read the
-[Contributing document](https://github.com/freqtrade/freqtrade/blob/develop/CONTRIBUTING.md)
-to understand the requirements before sending your pull-requests.
+Run the continuous bot:
 
-Coding is not a necessity to contribute - maybe start with improving the documentation?
-Issues labeled [good first issue](https://github.com/freqtrade/freqtrade/labels/good%20first%20issue) can be good first contributions, and will help get you familiar with the codebase.
+```powershell
+python main.py run
+```
 
-**Note** before starting any major new feature work, *please open an issue describing what you are planning to do* or talk to us on [discord](https://discord.gg/p7nuUNVfP7) (please use the #dev channel for this). This will ensure that interested parties can give valuable feedback on the feature, and let others know that you are working on it.
+Run the standalone BTCUSDT recovery TWAP bot for an 8-hour window:
 
-**Important:** Always create your PR against the `develop` branch, not `stable`.
+```powershell
+python main.py local-twap --symbol BTCUSDT --lower 50000 --upper 60000 --duration-hours 8 --poll-seconds 300
+```
 
-## Requirements
+Use `--live` only after your Binance key has Spot trading permission and Spot Algo access. Otherwise the bot stays in dry-run mode and logs its decisions.
 
-### Up-to-date clock
+Run the local dashboard:
 
-The clock must be accurate, synchronized to a NTP server very frequently to avoid problems with communication to the exchanges.
+```powershell
+python main.py dashboard --host 127.0.0.1 --port 8000
+```
 
-### Minimum hardware required
+Telegram control commands:
 
-To run this bot we recommend you a cloud instance with a minimum of:
+```text
+/status
+/page
+/portfolio
+/portfolio 12000
+/portfolio off
+/help
+/start BTC
+/start ETH
+/start PAXG
+/allow PAXG
+/allow BTC
+/allow ETH
+/stop PAXG
+/stop BTC
+/stop ETH
+```
 
-- Minimal (advised) system requirements: 2GB RAM, 1GB disk space, 2vCPU
+Plain Telegram text commands are also accepted, for example:
 
-### Software requirements
+```text
+start btc
+start eth
+stop btc
+sell paxg
+portfolio 12000
+portfolio off
+status
+```
 
-- [Python >= 3.11](http://docs.python-guide.org/en/latest/starting/installation/)
-- [pip](https://pip.pypa.io/en/stable/installing/)
-- [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
-- [TA-Lib](https://ta-lib.github.io/ta-lib-python/)
-- [virtualenv](https://virtualenv.pypa.io/en/stable/installation.html) (Recommended)
-- [Docker](https://www.docker.com/products/docker) (Recommended)
+## Important Notes
+
+- The bot only supports spot assets that have a direct stablecoin symbol such as `BTCUSDT`.
+- Market orders are used for exits. Entries are submitted through Binance Spot Algo Orders TWAP.
+- Commission handling is included in the cost-basis reconstruction when the fee is charged in the base or quote asset.
+- `dry_run=true` still fetches live balances and prices, but it does not place live orders.
+- Native Spot Algo Orders require Binance API trading permission and account support for Spot Algo Orders.
+- The dashboard is local by default and provides manual sell, stop, and allow controls for each managed asset.
+- The dashboard also provides a manual Start action for managed assets that are idle or paused.
+- The dashboard also lets you change the whole-strategy USD profit trigger at runtime without editing `strategy.json`. Any configured profit-percent threshold still applies.
+- The dashboard also lets you arm a portfolio-value liquidation trigger. When total portfolio value reaches that USD amount, the bot pauses all managed assets, cancels managed TWAPs, and sells every sellable non-USDT asset into USDT.
+- Telegram `/page` and `/status` return the same high-level status as the dashboard, including an overall strategy status summary and the configured dashboard URL.
+- Telegram `/portfolio <usd>` arms the same full-liquidation trigger, and `/portfolio off` clears it.
+- If you want to open the dashboard from Telegram on another device, expose the dashboard on a reachable HTTPS URL and set `DASHBOARD_URL` or `dashboard_url` accordingly.
+- `profit_target_usd` is the whole managed-strategy profit trigger, not a per-asset managed exit target.
+- `profit_target_pct` adds a percentage-based confirmation so the bot does not churn out of the basket on an insignificant dollar move.
+- `/stop <asset>` pauses that asset, cancels its TWAP if needed, sells the asset, and prevents restarts until `/allow <asset>` is issued.
+- This repository should not store your secrets in version control.

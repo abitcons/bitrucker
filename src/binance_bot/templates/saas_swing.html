@@ -1,0 +1,1171 @@
+﻿{% extends "saas_base.html" %}
+{% block title %}Swing Bot | BitRucker{% endblock %}
+{% block heading %}Swing Bot{% endblock %}
+{% block content %}
+{% set candidate_payload = initial_candidate_payload if initial_candidate_payload is defined else none %}
+{% set initial_candidates = candidate_payload.candidates if candidate_payload and candidate_payload.candidates else [] %}
+{% set initial_best_candidate = candidate_payload.best if candidate_payload and candidate_payload.best else (initial_candidates[0] if initial_candidates else none) %}
+{% set initial_worst_candidate = initial_candidates[-1] if initial_candidates else none %}
+<section class="panel-card bot-workspace">
+  <div class="workspace-pair-tabs" id="workspace-pair-tabs">
+    {% for symbol in initial_pairs %}
+      {% set pair_summary = pair_summaries.get(symbol, {}) if pair_summaries is defined else {} %}
+      {% set invested_amount = pair_summary.get('position_cost_basis', 0)|float %}
+      {% set score_candidate = (initial_candidates|selectattr('symbol', 'equalto', symbol)|list|first) %}
+      {% set score_value = score_candidate.score|float if score_candidate else none %}
+      {% set tab_title = 'Invested $%.2f'|format(invested_amount) if invested_amount > 0 else symbol %}
+      <a class="workspace-pair-tab {{ 'active' if symbol == active_symbol else '' }} {{ 'has-investment' if invested_amount > 0 else '' }} {{ 'scored' if score_candidate else '' }}" data-symbol="{{ symbol }}" data-invested="{{ '%.2f'|format(invested_amount) }}" {% if score_candidate %}data-score="{{ '%.2f'|format(score_value) }}"{% endif %} href="{{ url_for('saas_swing_bot', symbol=symbol) }}" title="{{ (tab_title ~ ' - Score %.1f'|format(score_value)) if score_candidate else tab_title }}">{{ symbol }}</a>
+    {% endfor %}
+    {% if user and (user.get('is_owner') or user.get('role') == 'admin') %}
+    <button class="workspace-pair-tab codex-cli-tab" id="codex-cli-tab-btn" onclick="toggleCodexCliPanel()" title="Codex CLI Activity">Codex CLI</button>
+    {% endif %}
+  </div>
+  <div class="workspace-chip-row">
+    <span class="status-chip {{ 'live' if subscription.can_trade else 'locked' }}">{{ subscription.label }}</span>
+    {% if customer_paper_mode %}<span class="status-chip">Isolated paper trading · live orders disabled</span>{% endif %}
+    {% if current_user() and current_user().get('is_owner') %}
+    <span class="status-chip" style="display:inline-flex;align-items:center;gap:6px;">
+      <label for="codex-run-enabled" style="font-size:.72rem;">Run Codex CLI</label>
+      <input id="codex-run-enabled" type="checkbox" aria-label="Run Codex CLI">
+      <select id="codex-model-select" aria-label="Codex CLI model" style="font-size:.72rem;padding:2px 4px;">
+        <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+        <option value="gpt-5.4">gpt-5.4</option>
+        <option value="gpt-5.5">gpt-5.5</option>
+        <option value="gpt-5.6-luna">gpt-5.6-luna</option>
+        <option value="gpt-5.6-sol">gpt-5.6-sol</option>
+        <option value="gpt-5.6-terra">gpt-5.6-terra</option>
+        <option value="gpt-5.3-codex-spark">gpt-5.3-codex-spark</option>
+      </select>
+      <button type="button" id="btn-save-codex-control" class="secondary-button" style="padding:3px 7px;font-size:.72rem;">Apply</button>
+      <button type="button" id="btn-run-codex-now" class="secondary-button" style="padding:3px 7px;font-size:.72rem;">Run Codex Cycle</button>
+      <span id="codex-control-status" style="font-size:.68rem;color:#64748b;"></span>
+    </span>
+    {% endif %}
+  </div>
+  <div class="swing-dashboard" id="swing-dashboard">
+    <section class="swing-top-strip">
+      <div class="top-metric-card balance-card">
+        <span id="top-balance-label">{{ 'Paper Equity' if customer_paper_mode else 'Spot Balance' }}</span>
+        <strong id="top-spot-balance">$0.00</strong>
+      </div>
+      <div class="top-metric-card today-profit-card">
+        <span id="top-profit-label">{{ 'Open Paper P&amp;L'|safe if customer_paper_mode else "Today's Profit" }}</span>
+        <strong id="top-today-profit">$0.00</strong>
+      </div>
+      <div class="top-metric-card profit-card">
+        <span>Net Profit</span>
+        <strong id="top-net-profit">$0.00</strong>
+      </div>
+      <div class="top-metric-card fee-card">
+        <span>Fees Paid</span>
+        <strong id="top-fees-paid">$0.00</strong>
+      </div>
+      <div class="top-metric-card flow-card">
+        <span>Last 1h Net Flow</span>
+        <strong id="top-net-flow">$0.00</strong>
+      </div>
+      <button class="danger-button stop-bot-button" type="button" id="btn-stop-bot">Stop Bot</button>
+    </section>
+
+    <section class="swing-card status-card">
+      <h2>Status</h2>
+      <dl class="swing-metrics">
+        <div><dt>Active Pair</dt><dd id="active-symbol">{{ active_symbol or '-' }}</dd></div>
+        <div><dt>Execution Mode</dt><dd class="{{ 'mode-paper' if customer_paper_mode else 'mode-live' }}" id="execution-mode">{{ 'PAPER TRADING' if customer_paper_mode else 'LIVE' }}</dd></div>
+        <div><dt>Primary Exchange</dt><dd><select id="primary-exchange-select" aria-label="Primary exchange" style="max-width:140px;"><option value="binance" {{ 'selected' if initial_primary_exchange == 'binance' else '' }}>BINANCE</option><option value="bitget" {{ 'selected' if initial_primary_exchange == 'bitget' else '' }}>BITGET</option></select><button class="secondary-button" type="button" id="btn-save-exchange" style="margin-left:6px;padding:4px 8px;">Apply</button></dd></div>
+        <div><dt>Bot State</dt><dd id="status-badge">loading</dd></div>
+        <div><dt>Running For</dt><dd id="running-duration">0s</dd></div>
+        <div><dt>Cycles Completed</dt><dd id="cycles">0</dd></div>
+        <div><dt>Current Price</dt><dd>$<span id="price">0</span></dd></div>
+        <div><dt>Invested Amount</dt><dd>$<span id="invested-amount">0.00</span></dd></div>
+        <div><dt>Avg Buy Price</dt><dd>$<span id="avg-buy-price">-</span></dd></div>
+        <div><dt>Target Profit</dt><dd>$<span id="target">0.00</span></dd></div>
+        <div><dt>Take Profit</dt><dd id="tp-order-status" style="font-size:0.82em;">idle</dd></div>
+        <div><dt>TP Limit Price</dt><dd>$<span id="target-sell-price">-</span></dd></div>
+        <div><dt>TP Distance</dt><dd id="tp-distance">-</dd></div>
+        <div class="wide-metric"><dt>Entry / Blocker</dt><dd id="entry-blocker">Checking...</dd></div>
+        <div><dt>Last Update</dt><dd id="status-updated">pending</dd></div>
+      </dl>
+    </section>
+
+    <section class="swing-card pair-card">
+      <h2>Pair Selector</h2>
+      <div class="swing-selector-row">
+        <select id="symbol-select" aria-label="Currency pair">
+          {% if supported_symbols is defined %}
+            {% for sym in supported_symbols %}
+              {% set option_symbol = sym.symbol if sym is mapping else sym %}
+              {% set option_type = sym.instrument_type if sym is mapping else 'crypto' %}
+              <option value="{{ option_symbol }}">{{ option_symbol }} · {{ option_type|upper }}</option>
+            {% endfor %}
+          {% endif %}
+        </select>
+        <button class="primary-button" type="button" id="btn-add-pair">Add Pair</button>
+        <button class="danger-button" type="button" id="btn-remove-pair">Remove Pair</button>
+      </div>
+      <dl class="swing-metrics candidate-summary">
+        <div><dt>Best Candidate</dt><dd id="best-symbol">{{ initial_best_candidate.symbol if initial_best_candidate else 'None' }}</dd></div>
+        <div><dt>Best Score</dt><dd class="score-pill" id="best-score">{{ '%.2f'|format(initial_best_candidate.score|float) if initial_best_candidate else '0.00' }}</dd></div>
+        <div><dt>Worst Candidate</dt><dd class="negative" id="worst-symbol">{{ initial_worst_candidate.symbol if initial_worst_candidate else 'None' }}</dd></div>
+        <div><dt>Worst Score</dt><dd class="score-pill negative-score" id="worst-score">{{ '%.2f'|format(initial_worst_candidate.score|float) if initial_worst_candidate else '0.00' }}</dd></div>
+        <div><dt>Rank Updated</dt><dd id="rank-updated">pending</dd></div>
+      </dl>
+      <div class="swing-actions">
+        <button class="secondary-button" type="button" id="btn-refresh-rank">Refresh Rank</button>
+        <button class="primary-button" type="button" id="btn-use-best" {% if not initial_best_candidate %}disabled{% endif %}>Use Best</button>
+        <button class="danger-button" type="button" id="btn-close-pair">Close Active Pair</button>
+      </div>
+      <div class="candidate-list native-candidate-list" id="candidate-list">
+        {% if initial_candidates %}
+          {% for candidate in initial_candidates[:5] %}
+            <div class="candidate-item {{ 'best' if loop.first else '' }} {{ 'worst' if candidate.symbol == initial_worst_candidate.symbol else '' }}">
+              <span class="candidate-symbol">{{ candidate.symbol }} · {{ (candidate.instrument_type or 'crypto')|upper }}</span>
+              <span class="candidate-score score-pill">Score {{ '%.1f'|format(candidate.score|float) }}</span>
+              <span class="candidate-reason">{{ candidate.reason }}</span>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="candidate-item best">
+            <span class="candidate-symbol">{{ active_symbol or '-' }}</span>
+            <span class="candidate-score score-pill">Score 0.0</span>
+            <span class="candidate-reason">Ranking will refresh from live market data.</span>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="swing-card chart-card">
+      <div class="chart-headline">
+        <h2>15m Price Graph</h2>
+        <div class="chart-meta-inline">
+          <span id="chart-symbol">{{ active_symbol or '-' }}</span>
+          <span id="chart-updated">pending</span>
+        </div>
+      </div>
+      <canvas class="price-chart-canvas" id="price-15m-chart" width="900" height="260" aria-label="15 minute price graph"></canvas>
+      <div class="chart-stats">
+        <span>Low <strong id="chart-low">-</strong></span>
+        <span>Last <strong id="chart-last">-</strong></span>
+        <span>High <strong id="chart-high">-</strong></span>
+      </div>
+    </section>
+
+    <section class="swing-card trade-history-card">
+      <div class="chart-headline">
+        <h2>Trades Last 1h</h2>
+        <div class="chart-meta-inline">
+          <span id="trade-history-symbol">{{ active_symbol or '-' }}</span>
+          <span id="trade-history-updated">pending</span>
+        </div>
+      </div>
+      <div class="trade-history-summary">
+        <span>Trades <strong id="trade-count">0</strong></span>
+        <span>Bought <strong id="trade-buy-quote">$0.00</strong></span>
+        <span>Sold <strong id="trade-sell-quote">$0.00</strong></span>
+        <span>Net <strong id="trade-net-flow">$0.00</strong></span>
+        <span>Fees <strong class="negative-text" id="trade-fees-paid">$0.00</strong></span>
+      </div>
+      <div class="trade-history-list" id="trade-history-list">
+        <div class="trade-history-empty">No trades in the last hour.</div>
+      </div>
+    </section>
+
+    <section class="swing-card signal-card">
+      <h2>RSI & Market Signals</h2>
+      <dl class="swing-metrics">
+        <div><dt>Volatility</dt><dd id="volatility">0.00%</dd></div>
+        <div><dt>Threshold</dt><dd id="threshold">0.00%</dd></div>
+        <div><dt>TWAP Start Bias</dt><dd id="vol-status">WAITING</dd></div>
+        <div><dt>RSI (14)</dt><dd id="rsi">0.00</dd></div>
+        <div><dt>RSI Status</dt><dd id="rsi-status">NEUTRAL</dd></div>
+        <div><dt>Liquidation Pressure</dt><dd id="liquidation-pressure">0.00</dd></div>
+        <div><dt>Liquidation Bias</dt><dd id="liquidation-bias">neutral</dd></div>
+      </dl>
+      <p class="swing-note" id="liquidation-summary">No liquidation signal yet</p>
+      <div class="indicator-block">
+        <div class="indicator-scale"><span>0</span><span>30 OS</span><span>50</span><span>70 OB</span><span>100</span></div>
+        <div class="indicator-bar rsi-bar"><span class="indicator-marker" id="rsi-marker"></span></div>
+      </div>
+    </section>
+
+    <section class="swing-card sentiment-card">
+      <h2 id="sentiment-heading">Fear & Greed</h2>
+      <dl class="swing-metrics">
+        <div><dt>Index</dt><dd id="sentiment">0.0</dd></div>
+        <div><dt>Status</dt><dd id="sentiment-status">NEUTRAL</dd></div>
+        <div><dt>Media Sentiment</dt><dd id="media-sentiment">neutral</dd></div>
+        <div><dt>Media Score</dt><dd id="media-score">0.0</dd></div>
+      </dl>
+      <div class="indicator-block">
+        <div class="indicator-scale"><span>Fear</span><span>Neutral</span><span>Greed</span></div>
+        <div class="indicator-bar sentiment-bar"><span class="indicator-marker" id="sentiment-marker"></span></div>
+      </div>
+      <p class="swing-note" id="sentiment-label">Neutral market</p>
+      <p class="swing-note" id="media-summary">No media signal yet</p>
+      <p class="swing-note news-headlines" id="media-news-headlines">No market headlines loaded yet</p>
+    </section>
+
+    <section class="swing-card advisor-card">
+      <h2>Trading Advisor</h2>
+      <dl class="swing-metrics">
+        <div><dt>Action</dt><dd id="advisor-action">MONITOR</dd></div>
+        <div><dt>Confidence</dt><dd><span id="advisor-confidence">0.0</span>%</dd></div>
+        <div><dt>Source</dt><dd id="advisor-source">rules</dd></div>
+        <div><dt>Codex CLI</dt><dd id="codex-status">not checked</dd> <button id="codex-auth-btn" onclick="openCodexAuth()" style="margin-left:8px;padding:2px 10px;font-size:0.78em;border:1px solid #6366f1;border-radius:4px;background:#f0f0ff;color:#4338ca;cursor:pointer;">Re-auth</button></dd></div>
+        <div><dt>Strategy Mode</dt><dd id="adaptive-strategy-mode">swing</dd></div>
+        <div><dt>Strategy Analysis</dt><dd id="strategy-analysis-source">rules</dd></div>
+        <div><dt>DCA Params</dt><dd id="adaptive-dca-params">-</dd></div>
+      </dl>
+      <p class="swing-note" id="advisor-summary">Waiting for market data</p>
+      <p class="swing-note" id="strategy-analysis-summary">Waiting for strategy analysis</p>
+    </section>
+
+    <section class="swing-card position-card">
+      <h2>Position & Profit</h2>
+      <dl class="swing-metrics">
+        <div><dt>Holdings</dt><dd id="position">0.0000</dd></div>
+        <div><dt>Free</dt><dd id="position-free">0.0000</dd></div>
+        <div><dt>Locked</dt><dd id="position-locked">0.0000</dd></div>
+        <div><dt>Profit</dt><dd id="profit">$0.00</dd></div>
+        <div><dt>Stop-Loss</dt><dd id="stop-loss-status">idle</dd></div>
+        <div><dt>Stop Price</dt><dd>$<span id="stop-loss-price">-</span></dd></div>
+        <div><dt>Stop Tolerance</dt><dd><span id="adaptive-stop-loss-pct">2.00</span>% / $<span id="adaptive-stop-loss-usdt">-</span></dd></div>
+        <div><dt>Max Loss Cap</dt><dd>$<span id="max-order-loss">15.00</span></dd></div>
+        <div><dt>TWAP Status</dt><dd id="twap-status">idle</dd></div>
+        <div><dt>TWAP Budget</dt><dd>$<span id="twap-budget">0.00</span></dd></div>
+      </dl>
+    </section>
+  </div><!-- end swing-dashboard -->
+</section><!-- end bot-workspace -->
+
+<!-- Codex CLI Activity Panel -->
+{% if user and (user.get('is_owner') or user.get('role') == 'admin') %}
+<section class="panel-card codex-cli-panel" id="codex-cli-panel" style="display:none;margin-top:0;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;border-bottom:1px solid #e5e7eb;">
+    <h2 style="margin:0;font-size:1.05rem;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <span>Codex CLI Activity</span>
+    </h2>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span id="codex-cli-last-refresh" style="font-size:0.75rem;color:#6b7280;">not loaded</span>
+      <button onclick="refreshCodexCli()" style="padding:3px 12px;font-size:0.78rem;border:1px solid #6366f1;border-radius:5px;background:#f5f3ff;color:#4338ca;cursor:pointer;">Refresh</button>
+      <button onclick="toggleCodexCliPanel()" style="padding:3px 10px;font-size:0.78rem;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">Close</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:420px;">
+
+    <!-- Left: per-symbol decision cards -->
+    <div style="padding:14px 16px;border-right:1px solid #e5e7eb;overflow-y:auto;max-height:560px;">
+      <h3 style="margin:0 0 10px;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;">Symbol Decisions</h3>
+      <div id="codex-symbol-cards" style="display:flex;flex-direction:column;gap:8px;">
+        <p style="color:#9ca3af;font-size:0.85rem;">Loading…</p>
+      </div>
+    </div>
+
+    <!-- Right: daemon log -->
+    <div style="padding:14px 16px;display:flex;flex-direction:column;overflow:hidden;max-height:560px;">
+      <h3 style="margin:0 0 10px;flex-shrink:0;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;">Daemon Log <span style="font-weight:400;text-transform:none;">(last 80 lines)</span></h3>
+      <pre id="codex-daemon-log" style="flex:1;margin:0;padding:10px;background:#0f172a;color:#94a3b8;font-size:0.72rem;line-height:1.55;border-radius:6px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">Loading…</pre>
+    </div>
+
+  </div>
+</section>
+{% endif %}
+<script>
+const API_BASE = '';
+const SESSION_CSRF_TOKEN = {{ csrf_token()|tojson }};
+(() => {
+  const initialPairs = {{ initial_pairs|tojson }};
+  const initialActiveSymbol = {{ active_symbol|tojson }};
+  const templateSupportedSymbols = {{ supported_symbols|tojson if supported_symbols is defined else '[]' }};
+  let activeSymbol = initialActiveSymbol || (initialPairs[0] || '');
+  let bestCandidateSymbol = {{ initial_best_candidate.symbol|tojson if initial_best_candidate else 'null' }};
+  let supportedSymbols = [];
+
+  const byId = (id) => document.getElementById(id);
+  const setText = (id, value) => { const node = byId(id); if (node) node.textContent = value; };
+  const numberText = (value, digits = 2) => Number(value || 0).toFixed(digits);
+  const scoreText = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '-';
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  function updateTabTitle(tab) {
+    const symbol = tab.dataset.symbol || tab.textContent.trim();
+    const invested = Number(tab.dataset.invested || 0);
+    const score = Number(tab.dataset.score);
+    const title = invested > 0 ? `Invested $${invested.toFixed(2)}` : symbol;
+    tab.title = Number.isFinite(score) ? `${title} - Score ${scoreText(score, 1)}` : title;
+  }
+
+  function applyTabScore(tab, score) {
+    const numericScore = Number(score);
+    if (!Number.isFinite(numericScore)) {
+      tab.classList.remove('scored');
+      tab.removeAttribute('data-score');
+      tab.style.removeProperty('--tab-score-hue');
+      updateTabTitle(tab);
+      return;
+    }
+    const scoreRatio = clamp(numericScore / 100, 0, 1);
+    const hue = 4 + scoreRatio * 138;
+    tab.classList.add('scored');
+    tab.dataset.score = scoreText(numericScore, 2);
+    tab.style.setProperty('--tab-score-hue', hue.toFixed(1));
+    updateTabTitle(tab);
+  }
+
+  function applyTabScores(candidates) {
+    const scoresBySymbol = new Map(
+      (Array.isArray(candidates) ? candidates : [])
+        .filter((candidate) => candidate && candidate.symbol)
+        .map((candidate) => [candidate.symbol, candidate.score])
+    );
+    document.querySelectorAll('.workspace-pair-tab[data-symbol]').forEach((tab) => {
+      applyTabScore(tab, scoresBySymbol.get(tab.dataset.symbol));
+    });
+  }
+
+  document.querySelectorAll('.workspace-pair-tab[data-score]').forEach((tab) => applyTabScore(tab, tab.dataset.score));
+
+  function switchActivePair(symbol) {
+    if (!symbol || symbol === activeSymbol) return;
+    activeSymbol = symbol;
+    history.replaceState(null, '', `?symbol=${encodeURIComponent(symbol)}`);
+    document.querySelectorAll('.workspace-pair-tab[data-symbol]').forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.symbol === symbol);
+    });
+    Promise.all([
+      updateStatus().catch(console.error),
+      refreshCandidates(false).catch(console.error),
+      refreshPriceChart().catch(console.error),
+      refreshTradeHistory().catch(console.error),
+    ]);
+  }
+
+  document.querySelectorAll('.workspace-pair-tab[data-symbol]').forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchActivePair(tab.dataset.symbol);
+    });
+  });
+
+  function setSignedMoney(id, value) {
+    const node = byId(id);
+    if (!node) return;
+    const amount = Number(value || 0);
+    node.textContent = `${amount < 0 ? '-' : ''}$${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    node.classList.toggle('positive-text', amount >= 0);
+    node.classList.toggle('negative-text', amount < 0);
+  }
+
+  function formatDuration(totalSeconds) {
+    const secondsValue = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const days = Math.floor(secondsValue / 86400);
+    const hours = Math.floor((secondsValue % 86400) / 3600);
+    const minutes = Math.floor((secondsValue % 3600) / 60);
+    const seconds = secondsValue % 60;
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }
+
+  async function fetchJson(url, options = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const method = String(options.method || 'GET').toUpperCase();
+      const headers = { ...(options.headers || {}) };
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && SESSION_CSRF_TOKEN) {
+        headers['X-CSRF-Token'] = SESSION_CSRF_TOKEN;
+      }
+      const response = await fetch(url, { ...options, headers, credentials: 'include', signal: controller.signal });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatAge(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '-';
+  if (value < 60) return `${Math.floor(value)}s ago`;
+  if (value < 3600) return `${Math.floor(value / 60)}m ago`;
+  return `${Math.floor(value / 3600)}h ${Math.floor((value % 3600) / 60)}m ago`;
+}
+
+function codexStatusColor(status) {
+  const text = String(status || '').toLowerCase();
+  if (text.includes('available')) return '#047857';
+  if (text.includes('timeout') || text.includes('failed') || text.includes('invalid')) return '#b42318';
+  if (text.includes('pending') || text.includes('running')) return '#b45309';
+  return '#475569';
+}
+
+function renderCodexCli(data) {
+  const cards = byId('codex-symbol-cards');
+  const log = byId('codex-daemon-log');
+  setText('codex-cli-last-refresh', new Date().toLocaleTimeString());
+
+  const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+  const pending = data.pending || {};
+  const pendingSymbols = Object.keys(pending).filter((symbol) => !symbols.some((row) => row.symbol === symbol));
+
+  if (cards) {
+    const symbolCards = symbols.map((row) => {
+      const status = row.status || 'unknown';
+      const color = codexStatusColor(status);
+      const reason = row.reason || row.human_summary || row.output_preview || row.error_preview || 'No readable decision output yet.';
+      const action = row.action || '-';
+      const confidence = row.confidence !== null && row.confidence !== undefined ? `${Number(row.confidence).toFixed(2)}` : '-';
+      const mode = row.strategy_mode || row.regime || '-';
+      return `
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:.9rem;color:#111827;">${escapeHtml(row.symbol || '-')}</strong>
+            <span style="font-size:.72rem;font-weight:700;color:${color};text-transform:uppercase;">${escapeHtml(status).replaceAll('_', ' ')}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;font-size:.74rem;color:#475569;margin-bottom:7px;">
+            <span>Action <strong style="color:#111827;">${escapeHtml(action)}</strong></span>
+            <span>Confidence <strong style="color:#111827;">${escapeHtml(confidence)}</strong></span>
+            <span>Mode <strong style="color:#111827;">${escapeHtml(mode)}</strong></span>
+          </div>
+          <div style="font-size:.78rem;color:#334155;line-height:1.45;">${escapeHtml(reason)}</div>
+          <div style="font-size:.7rem;color:#94a3b8;margin-top:6px;">${formatAge(row.age_s)}</div>
+        </div>
+      `;
+    });
+
+    const pendingCards = pendingSymbols.map((symbol) => `
+      <div style="border:1px dashed #f59e0b;border-radius:8px;padding:10px 12px;background:#fffbeb;">
+        <strong style="font-size:.9rem;color:#92400e;">${escapeHtml(symbol)}</strong>
+        <div style="font-size:.78rem;color:#92400e;margin-top:4px;">Decision request is queued.</div>
+      </div>
+    `);
+
+    cards.innerHTML = [...pendingCards, ...symbolCards].join('') || '<p style="color:#9ca3af;font-size:0.85rem;">No Codex CLI decisions yet.</p>';
+  }
+
+  if (log) {
+    const lines = Array.isArray(data.log_lines) ? data.log_lines : [];
+    log.textContent = lines.length ? lines.join('\n') : 'No daemon log lines found.';
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+async function refreshCodexCli() {
+  const cards = byId('codex-symbol-cards');
+  const log = byId('codex-daemon-log');
+  if (cards) cards.innerHTML = '<p style="color:#9ca3af;font-size:0.85rem;">Loading...</p>';
+  if (log) log.textContent = 'Loading...';
+  try {
+    const data = await fetchJson(`${API_BASE}/api/codex/activity`, { credentials: 'include' }, 12000);
+    renderCodexCli(data);
+  } catch (error) {
+    if (cards) cards.innerHTML = `<p style="color:#b42318;font-size:0.85rem;">${escapeHtml(error.message || error)}</p>`;
+    if (log) log.textContent = `Codex activity unavailable: ${error.message || error}`;
+  }
+}
+
+function toggleCodexCliPanel() {
+  const panel = byId('codex-cli-panel');
+  const button = byId('codex-cli-tab-btn');
+  if (!panel) return;
+  const willShow = panel.style.display === 'none' || !panel.style.display;
+  panel.style.display = willShow ? 'block' : 'none';
+  button?.classList.toggle('active', willShow);
+  if (willShow) refreshCodexCli().catch(console.error);
+}
+
+async function loadCodexControl() {
+  const enabled = byId('codex-run-enabled');
+  const model = byId('codex-model-select');
+  if (!enabled || !model) return;
+  try {
+    const data = await fetchJson(`${API_BASE}/api/codex/control`, { credentials: 'include' }, 8000);
+    enabled.checked = Boolean(data.enabled);
+    if (data.model) model.value = data.model;
+    setText('codex-control-status', data.enabled ? 'enabled' : 'disabled');
+  } catch (error) {
+    setText('codex-control-status', error.message || 'unavailable');
+  }
+}
+
+async function saveCodexControl() {
+  const enabled = byId('codex-run-enabled');
+  const model = byId('codex-model-select');
+  if (!enabled || !model) return;
+  const data = await fetchJson(`${API_BASE}/api/codex/control`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: enabled.checked, model: model.value, reasoning_effort: 'low' }),
+  }, 8000);
+  setText('codex-control-status', `${data.enabled ? 'enabled' : 'disabled'} / ${data.model} saved`);
+}
+
+async function runCodexNow() {
+  const data = await fetchJson(`${API_BASE}/api/codex/run`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: activeSymbol }),
+  }, 8000);
+  setText('codex-control-status', `${data.model || 'selected model'} queued`);
+  if (typeof refreshCodexCli === 'function') setTimeout(() => refreshCodexCli().catch(console.error), 1000);
+}
+
+window.refreshCodexCli = refreshCodexCli;
+window.toggleCodexCliPanel = toggleCodexCliPanel;
+window.loadCodexControl = loadCodexControl;
+
+  function populateSymbolSelect(instruments, selectedSymbol) {
+    const select = byId('symbol-select');
+    if (!select || !Array.isArray(instruments) || !instruments.length) return;
+    const rows = instruments.map((item) => typeof item === 'string'
+      ? { symbol: item, instrument_type: 'crypto' }
+      : item
+    ).filter((item) => item && item.symbol);
+    const symbols = rows.map((item) => item.symbol);
+    if (!symbols.length) return;
+    supportedSymbols = symbols.slice();
+    select.innerHTML = rows.map((item) => `<option value="${item.symbol}">${item.symbol} · ${String(item.instrument_type || 'crypto').toUpperCase()}</option>`).join('');
+    select.value = selectedSymbol && symbols.includes(selectedSymbol) ? selectedSymbol : symbols[0];
+  }
+
+  function renderCandidates(data) {
+    const list = Array.isArray(data.candidates) ? data.candidates : [];
+    const best = data.best || list.find((candidate) => candidate.liquidity_ok && candidate.fee_ok) || list[0] || null;
+    const worst = list.length ? list[list.length - 1] : null;
+    applyTabScores(list);
+    bestCandidateSymbol = best ? best.symbol : null;
+    setText('best-symbol', best ? best.symbol : 'None');
+    setText('best-score', best ? scoreText(best.score, 2) : '0.00');
+    setText('worst-symbol', worst ? worst.symbol : 'None');
+    setText('worst-score', worst ? scoreText(worst.score, 2) : '0.00');
+    setText('rank-updated', new Date().toLocaleTimeString());
+    const useBest = byId('btn-use-best');
+    if (useBest) useBest.disabled = !bestCandidateSymbol;
+    const container = byId('candidate-list');
+    if (!container) return;
+    const worstSymbol = worst ? worst.symbol : '';
+    container.innerHTML = list.slice(0, 5).map((candidate, index) => `
+      <div class="candidate-item ${index === 0 ? 'best' : ''} ${candidate.symbol === worstSymbol ? 'worst' : ''}">
+        <span class="candidate-symbol">${candidate.symbol} · ${String(candidate.instrument_type || 'crypto').toUpperCase()}</span>
+        <span class="candidate-score score-pill">Score ${scoreText(candidate.score, 1)}</span>
+        <span class="candidate-reason">${candidate.reason || 'Live market rank'}</span>
+      </div>
+    `).join('') || '<div class="candidate-item best"><span class="candidate-symbol">None</span><span class="candidate-score">0.0</span><span class="candidate-reason">No candidate data available</span></div>';
+  }
+
+  function formatChartPrice(value) {
+    const price = Number(value || 0);
+    if (!Number.isFinite(price) || price <= 0) return '-';
+    return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: price >= 100 ? 2 : 6 })}`;
+  }
+
+  function drawPriceChart(candles) {
+    const canvas = byId('price-15m-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(520, Math.floor(rect.width || 900));
+    const height = Math.max(220, Math.floor(rect.height || 260));
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#f7faf9';
+    ctx.fillRect(0, 0, width, height);
+
+    const points = candles.map((candle) => ({
+      time: Number(candle.close_time || candle.open_time || 0),
+      close: Number(candle.close || 0),
+      high: Number(candle.high || candle.close || 0),
+      low: Number(candle.low || candle.close || 0),
+    })).filter((point) => Number.isFinite(point.close) && point.close > 0);
+
+    if (points.length < 2) {
+      ctx.fillStyle = '#65736f';
+      ctx.font = '700 14px Aptos, Segoe UI, sans-serif';
+      ctx.fillText('No 15m candle data available yet', 18, 34);
+      return;
+    }
+
+    const minPrice = Math.min(...points.map((point) => point.low));
+    const maxPrice = Math.max(...points.map((point) => point.high));
+    const lastPrice = points[points.length - 1].close;
+    const range = Math.max(maxPrice - minPrice, Math.max(maxPrice, 1) * 0.001);
+    const padding = { top: 18, right: 54, bottom: 28, left: 56 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const xFor = (index) => padding.left + (chartWidth * index) / Math.max(points.length - 1, 1);
+    const yFor = (price) => padding.top + chartHeight - ((price - minPrice) / range) * chartHeight;
+
+    ctx.strokeStyle = '#dce6e2';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#65736f';
+    ctx.font = '700 11px Aptos, Segoe UI, sans-serif';
+    for (let step = 0; step <= 4; step += 1) {
+      const y = padding.top + (chartHeight * step) / 4;
+      const labelPrice = maxPrice - (range * step) / 4;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+      ctx.fillText(formatChartPrice(labelPrice).replace('$', ''), width - padding.right + 8, y + 4);
+    }
+
+    const first = points[0].close;
+    const positive = lastPrice >= first;
+    const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+    gradient.addColorStop(0, positive ? 'rgba(15,118,110,0.22)' : 'rgba(180,35,24,0.20)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = xFor(index);
+      const y = yFor(point.close);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(xFor(points.length - 1), height - padding.bottom);
+    ctx.lineTo(xFor(0), height - padding.bottom);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = xFor(index);
+      const y = yFor(point.close);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = positive ? '#0f766e' : '#b42318';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    const lastX = xFor(points.length - 1);
+    const lastY = yFor(lastPrice);
+    ctx.fillStyle = positive ? '#0f766e' : '#b42318';
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    const firstLabel = new Date(points[0].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const lastLabel = new Date(points[points.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    ctx.fillStyle = '#65736f';
+    ctx.fillText(firstLabel, padding.left, height - 8);
+    ctx.fillText(lastLabel, width - padding.right - 42, height - 8);
+
+    setText('chart-low', formatChartPrice(minPrice));
+    setText('chart-last', formatChartPrice(lastPrice));
+    setText('chart-high', formatChartPrice(maxPrice));
+  }
+
+  async function refreshPriceChart() {
+    if (!activeSymbol) return;
+    try {
+      const data = await fetchJson(`${API_BASE}/api/bot/chart?symbol=${encodeURIComponent(activeSymbol)}&interval=15m&limit=96`, {}, 12000);
+      setText('chart-symbol', `${data.symbol || activeSymbol} / 15m`);
+      setText('chart-updated', new Date().toLocaleTimeString());
+      drawPriceChart(Array.isArray(data.candles) ? data.candles : []);
+    } catch (error) {
+      console.error(error);
+      setText('chart-updated', 'unavailable');
+      drawPriceChart([]);
+    }
+  }
+
+  async function refreshInvestmentTabs() {
+    try {
+      const data = await fetchJson(`${API_BASE}/api/bot/pairs`, {}, 8000);
+      const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+      const bySymbol = new Map(pairs.map((pair) => [pair.symbol, pair]));
+      document.querySelectorAll('.workspace-pair-tab[data-symbol]').forEach((tab) => {
+        const symbol = tab.dataset.symbol;
+        const pair = bySymbol.get(symbol) || {};
+        const invested = Number(pair.position_cost_basis || 0);
+        tab.dataset.invested = invested.toFixed(2);
+        tab.classList.toggle('has-investment', invested > 0);
+        updateTabTitle(tab);
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  function formatTradeMoney(value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return '$0.00';
+    return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function formatTradeQty(value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return '0';
+    return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 });
+  }
+
+  function renderTradeHistory(data) {
+    const trades = Array.isArray(data.trades) ? data.trades : [];
+    setText('trade-history-symbol', `${data.symbol || activeSymbol} / 1h`);
+    setText('trade-history-updated', new Date().toLocaleTimeString());
+    setText('trade-count', String(data.count ?? trades.length));
+    setText('trade-buy-quote', formatTradeMoney(data.buy_quote));
+    setText('trade-sell-quote', formatTradeMoney(data.sell_quote));
+    setSignedMoney('trade-net-flow', data.net_quote_flow || 0);
+    setText('trade-fees-paid', formatTradeMoney(data.fee_quote_estimate || 0));
+    setText('top-fees-paid', formatTradeMoney(data.fee_quote_estimate || 0));
+    setSignedMoney('top-net-flow', data.net_quote_flow || 0);
+    const container = byId('trade-history-list');
+    if (!container) return;
+    if (!trades.length) {
+      container.innerHTML = '<div class="trade-history-empty">No trades in the last hour.</div>';
+      return;
+    }
+    container.innerHTML = trades.slice(0, 30).map((trade) => {
+      const side = String(trade.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+      const time = trade.time ? new Date(Number(trade.time)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+      const fee = Number(trade.commission || 0) > 0 ? `${formatTradeQty(trade.commission)} ${trade.commission_asset || ''}` : '-';
+      return `
+        <div class="trade-row ${side.toLowerCase()}">
+          <span class="trade-time">${time}</span>
+          <span class="trade-side">${side}</span>
+          <span class="trade-qty">${formatTradeQty(trade.qty)}</span>
+          <span class="trade-price">${formatChartPrice(trade.price)}</span>
+          <span class="trade-quote">${formatTradeMoney(trade.quote_qty)}</span>
+          <span class="trade-fee">${fee}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function refreshAccountSummary() {
+    try {
+      const data = await fetchJson(`${API_BASE}/api/account/summary`, {}, 12000);
+      const bal = Number(data.spot_balance_usdt || 0);
+      byId('top-spot-balance').textContent = `$${bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      setSignedMoney('top-today-profit', data.today_profit_usdt || 0);
+      if (data.balance_label) setText('top-balance-label', data.balance_label);
+      if (data.profit_label) setText('top-profit-label', data.profit_label);
+    } catch (error) {
+      console.error('account summary error', error);
+    }
+  }
+
+  async function refreshTradeHistory() {
+    if (!activeSymbol) return;
+    try {
+      const data = await fetchJson(`${API_BASE}/api/bot/trades?symbol=${encodeURIComponent(activeSymbol)}&hours=1`, {}, 12000);
+      renderTradeHistory(data);
+    } catch (error) {
+      console.error(error);
+      setText('trade-history-updated', 'unavailable');
+      const container = byId('trade-history-list');
+      if (container) container.innerHTML = '<div class="trade-history-empty">Trade history unavailable.</div>';
+    }
+  }
+
+  function moveMarker(id, value) {
+    const node = byId(id);
+    if (node) node.style.left = `${clamp(Number(value || 0), 0, 100)}%`;
+  }
+
+  function sentimentLabel(value, rawName) {
+    const sentiment = Number(value || 50);
+    if (rawName) return String(rawName).replaceAll('_', ' ').toUpperCase();
+    if (sentiment < 25) return 'EXTREME FEAR';
+    if (sentiment < 45) return 'FEAR';
+    if (sentiment < 55) return 'NEUTRAL';
+    if (sentiment < 75) return 'GREED';
+    return 'EXTREME GREED';
+  }
+
+  function rsiLabel(value, startThreshold) {
+    const rsi = Number(value || 50);
+    if (rsi <= Number(startThreshold || 55)) return 'TWAP START READY';
+    if (rsi < 30) return 'OVERSOLD';
+    if (rsi > 70) return 'OVERBOUGHT';
+    return 'NEUTRAL';
+  }
+
+  async function refreshCandidates(force = false) {
+    if (!activeSymbol) return;
+    const query = activeSymbol ? `?symbol=${encodeURIComponent(activeSymbol)}${force ? '&refresh=1' : ''}` : `?refresh=${force ? '1' : '0'}`;
+    const data = await fetchJson(`${API_BASE}/api/bot/candidates${query}`, {}, force ? 16000 : 12000);
+    renderCandidates(data);
+  }
+
+  async function updateStatus() {
+    if (!activeSymbol) return;
+    const data = await fetchJson(`${API_BASE}/api/bot/status?symbol=${encodeURIComponent(activeSymbol)}`, {}, 12000);
+    activeSymbol = data.symbol || activeSymbol;
+    setText('active-symbol', activeSymbol);
+    const exchangeSelect = byId('primary-exchange-select');
+    if (exchangeSelect && data.primary_exchange) exchangeSelect.value = String(data.primary_exchange).toLowerCase();
+    setText('execution-mode', data.execution_mode || 'LIVE');
+    byId('execution-mode')?.classList.toggle('mode-live', !data.dry_run);
+    byId('execution-mode')?.classList.toggle('mode-paper', Boolean(data.dry_run));
+    setText('status-badge', String(data.status || 'idle').toUpperCase());
+    setText('running-duration', formatDuration(data.running_duration_seconds));
+    setText('cycles', data.cycles_completed || 0);
+    setText('price', numberText(data.current_price, 2));
+    setText('invested-amount', numberText(data.position_cost_basis, 2));
+    setText('avg-buy-price', data.entry_price ? numberText(data.entry_price, 2) : '-');
+    setText('target', numberText(data.target_profit_usdt, 2));
+    const tpPrice = Number(data.target_sell_price || 0);
+    const tpStatus = (data.target_sell_status || 'idle').toLowerCase();
+    const curPrice = Number(data.current_price || 0);
+    setText('target-sell-price', tpPrice > 0 ? numberText(tpPrice, 2) : '-');
+    // TP order status badge
+    const tpStatusEl = document.getElementById('tp-order-status');
+    if (tpStatusEl) {
+      const tpStatusMap = {
+        'new': { label: data.dry_run ? '🧪 Paper order' : '🟢 LIVE on exchange', color: '#16a34a' },
+        'partially_filled': { label: '🟡 Partial fill', color: '#d97706' },
+        'filled': { label: '✅ FILLED', color: '#15803d' },
+        'canceled': { label: '⬜ Canceled', color: '#6b7280' },
+        'protected_by_stop_loss': { label: '🛡 SL active, TP pending', color: '#7c3aed' },
+        'waiting_for_cost_basis': { label: '⏳ Awaiting cost basis', color: '#9ca3af' },
+        'waiting_for_free_balance': { label: '⏳ Awaiting free balance', color: '#9ca3af' },
+        'place_error': { label: '❌ Place error', color: '#dc2626' },
+        'idle': { label: data.position_qty > 0 ? '⏳ Placing…' : '— No position', color: '#9ca3af' },
+      };
+      const mapped = tpStatusMap[tpStatus] || { label: tpStatus.replace(/_/g,' '), color: '#374151' };
+      tpStatusEl.textContent = mapped.label;
+      tpStatusEl.style.color = mapped.color;
+    }
+    // TP distance: how far price needs to move to hit the TP
+    const tpDistEl = document.getElementById('tp-distance');
+    if (tpDistEl) {
+      if (tpPrice > 0 && curPrice > 0) {
+        const distPct = ((tpPrice - curPrice) / curPrice * 100);
+        const sign = distPct >= 0 ? '+' : '';
+        tpDistEl.textContent = `${sign}${distPct.toFixed(2)}% ($${Math.abs(tpPrice - curPrice).toFixed(2)})`;
+        tpDistEl.style.color = distPct >= 0 ? '#16a34a' : '#dc2626';
+      } else {
+        tpDistEl.textContent = '-';
+        tpDistEl.style.color = '';
+      }
+    }
+    setText('entry-blocker', data.last_exit_reason || data.last_risk_note || 'Waiting for next entry signal');
+    const volatility = Number(data.volatility || 0);
+    const threshold = Number(data.volatility_threshold || 0);
+    const rsi = Number(data.current_rsi || 50);
+    const sentiment = Number(data.market_sentiment || 50);
+    setText('volatility', `${numberText(volatility, 2)}%`);
+    setText('threshold', `${numberText(threshold, 2)}%`);
+    setText('vol-status', data.status === 'trading' ? 'TWAP RUNNING' : (rsi <= Number(data.twap_rsi_start_threshold || 55) ? 'RSI READY' : 'WAIT RSI'));
+    setText('rsi', numberText(rsi, 2));
+    setText('rsi-status', rsiLabel(rsi, data.twap_rsi_start_threshold));
+    moveMarker('rsi-marker', rsi);
+    setText('liquidation-pressure', numberText(data.liquidation_pressure_score, 2));
+    setText('liquidation-bias', String(data.liquidation_bias || 'neutral').replaceAll('_', ' '));
+    setText('liquidation-summary', data.liquidation_summary || 'No liquidation signal yet');
+    setText('sentiment', numberText(sentiment, 1));
+    setText('sentiment-status', sentimentLabel(sentiment, data.sentiment_name));
+    setText('sentiment-heading', data.is_stock ? 'Stock Sentiment Context' : 'Fear & Greed');
+    setText('sentiment-label', data.is_stock
+      ? `${data.underlying_ticker || data.base_asset || 'Stock'} news + RSI; crypto index excluded`
+      : `${sentimentLabel(sentiment, data.sentiment_name)} market`);
+    moveMarker('sentiment-marker', sentiment);
+    setText('media-sentiment', `${String(data.media_sentiment_label || 'neutral').toUpperCase()} (${numberText(data.media_sentiment_score, 1)})`);
+    setText('media-score', numberText(data.media_sentiment_score, 1));
+    setText('media-summary', data.media_sentiment_summary || 'No media signal yet');
+    setText('media-news-headlines', data.media_news_headlines || 'No market headlines loaded yet');
+    setText('advisor-action', String(data.advisor_action || 'MONITOR').replaceAll('_', ' '));
+    setText('advisor-confidence', numberText(data.advisor_confidence, 1));
+    setText('advisor-source', String(data.advisor_source || 'rules').replaceAll('_', ' '));
+    setText('codex-status', String(data.codex_cli_status || 'not_checked').replaceAll('_', ' '));
+    setText('advisor-summary', data.advisor_summary || 'Waiting for market data');
+    setText('strategy-analysis-source', String(data.strategy_analysis_source || 'rules').replaceAll('_', ' '));
+    setText('strategy-analysis-summary', data.strategy_analysis_summary || 'Waiting for strategy analysis');
+    setText('adaptive-dca-params', `${data.adaptive_dca_levels || 3}x, ${(Number(data.adaptive_dca_min_step_pct || 0) * 100).toFixed(2)}-${(Number(data.adaptive_dca_max_step_pct || 0) * 100).toFixed(2)}%, ${data.adaptive_dca_reprice_interval_seconds || 180}s`);
+    setText('adaptive-strategy-mode', String(data.adaptive_strategy_mode || 'swing').toUpperCase());
+    setText('adaptive-stop-loss-pct', numberText(data.adaptive_stop_loss_pct || 2.0, 2));
+    setText('adaptive-stop-loss-usdt', Number(data.adaptive_stop_loss_usdt || 0) > 0 ? numberText(data.adaptive_stop_loss_usdt, 2) : '-');
+    setText('position', numberText(data.position_qty, 4));
+    setText('position-free', numberText(data.position_free_qty, 4));
+    setText('position-locked', numberText(data.position_locked_qty, 4));
+    const profit = Number(data.current_profit_usdt || 0);
+    setText('profit', `$${profit.toFixed(2)}`);
+    setSignedMoney('top-net-profit', profit);
+    byId('profit')?.classList.toggle('positive', profit >= 0);
+    byId('profit')?.classList.toggle('negative', profit < 0);
+    setText('stop-loss-status', String(data.stop_loss_status || 'idle').replaceAll('_', ' ').toUpperCase());
+    setText('stop-loss-price', Number(data.stop_loss_price || 0) > 0 ? numberText(data.stop_loss_price, 2) : '-');
+    setText('max-order-loss', numberText(data.max_order_loss_usdt || 1, 2));
+    setText('twap-status', String(data.twap_status || 'idle').replaceAll('_', ' ').toUpperCase());
+    setText('twap-budget', numberText(data.twap_quote_budget, 2));
+    setText('status-updated', new Date().toLocaleTimeString());
+    populateSymbolSelect(data.supported_instruments || data.supported_symbols || [], activeSymbol);
+  }
+
+  async function addPair(symbolOverride = '') {
+    const symbol = symbolOverride || byId('symbol-select')?.value || '';
+    if (!symbol) return;
+    const result = await fetchJson(`${API_BASE}/api/bot/pairs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, exchange: byId('primary-exchange-select')?.value || 'binance' }),
+    });
+    const resolvedSymbol = result.resolved_symbol || result.status?.symbol || symbol;
+    // Add a tab if it doesn't exist yet, then switch to it without navigating
+    let tab = document.querySelector(`.workspace-pair-tab[data-symbol="${resolvedSymbol}"]`);
+    if (!tab) {
+      const tabContainer = byId('workspace-pair-tabs');
+      if (tabContainer) {
+        tab = document.createElement('a');
+        tab.className = 'workspace-pair-tab';
+        tab.dataset.symbol = resolvedSymbol;
+        tab.textContent = resolvedSymbol;
+        tab.href = '?symbol=' + encodeURIComponent(resolvedSymbol);
+        tab.addEventListener('click', (e) => { e.preventDefault(); switchActivePair(tab.dataset.symbol); });
+        tabContainer.appendChild(tab);
+      }
+    }
+    switchActivePair(resolvedSymbol);
+    await refreshInvestmentTabs();
+  }
+
+  async function removePair() {
+    if (!activeSymbol || !confirm(`Remove ${activeSymbol} from active pairs?`)) return;
+    const result = await fetchJson(`${API_BASE}/api/bot/pairs/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: activeSymbol }),
+    });
+    const removedSymbol = result.removed_symbol || activeSymbol;
+    const nextSymbol = result.active_symbol || '';
+    // Remove tab from DOM and switch to the next available pair without navigating
+    const removedTab = document.querySelector(`.workspace-pair-tab[data-symbol="${removedSymbol}"]`);
+    if (removedTab) removedTab.remove();
+    const remaining = nextSymbol
+      ? document.querySelector(`.workspace-pair-tab[data-symbol="${nextSymbol}"]`)
+      : document.querySelector('.workspace-pair-tab[data-symbol]');
+    if (remaining) {
+      switchActivePair(remaining.dataset.symbol);
+    } else {
+      activeSymbol = '';
+      history.replaceState(null, '', '?');
+      setText('active-symbol', '-');
+    }
+    await refreshInvestmentTabs();
+  }
+
+  async function closeActivePair() {
+    if (!activeSymbol || !confirm(`Cancel ${activeSymbol} orders and sell its base asset to quote?`)) return;
+    const data = await fetchJson(`${API_BASE}/api/bot/close-pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: activeSymbol }),
+    }, 20000);
+    if (data.status) {
+      await updateStatus();
+      await refreshInvestmentTabs();
+    }
+    alert(data.message || `${activeSymbol} close submitted.`);
+  }
+
+  async function stopActiveBot() {
+    if (!activeSymbol || !confirm(`Stop ${activeSymbol} bot? Open protective orders/positions are not sold by stop.`)) return;
+    await fetchJson(`${API_BASE}/api/bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: activeSymbol }),
+    }, 12000);
+    await updateStatus();
+  }
+
+  async function savePrimaryExchange() {
+    const exchange = byId('primary-exchange-select')?.value || 'binance';
+    const data = await fetchJson(`${API_BASE}/api/bot/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exchange, symbol: activeSymbol }),
+    });
+    if (data.status) await updateStatus();
+    if (Array.isArray(data.supported_instruments)) {
+      populateSymbolSelect(data.supported_instruments, '');
+    }
+    alert(data.message || `Primary exchange set to ${exchange.toUpperCase()}.`);
+  }
+
+  byId('btn-add-pair')?.addEventListener('click', () => addPair());
+  byId('btn-remove-pair')?.addEventListener('click', () => removePair());
+  byId('btn-close-pair')?.addEventListener('click', () => closeActivePair().catch((error) => alert(error.message || error)));
+  byId('btn-stop-bot')?.addEventListener('click', () => stopActiveBot().catch((error) => alert(error.message || error)));
+  byId('btn-save-exchange')?.addEventListener('click', () => savePrimaryExchange().catch((error) => alert(error.message || error)));
+  byId('btn-save-codex-control')?.addEventListener('click', () => saveCodexControl().catch((error) => alert(error.message || error)));
+  byId('btn-run-codex-now')?.addEventListener('click', () => runCodexNow().catch((error) => alert(error.message || error)));
+  byId('btn-refresh-rank')?.addEventListener('click', () => refreshCandidates(true).catch(console.error));
+  byId('btn-use-best')?.addEventListener('click', () => bestCandidateSymbol && addPair(bestCandidateSymbol));
+
+  populateSymbolSelect(Array.isArray(templateSupportedSymbols) ? templateSupportedSymbols : [], activeSymbol);
+
+  updateStatus().catch(console.error);
+  loadCodexControl().catch(console.error);
+  refreshCandidates(false).catch(console.error);
+  refreshInvestmentTabs().catch(console.error);
+  refreshPriceChart().catch(console.error);
+  refreshTradeHistory().catch(console.error);
+  refreshAccountSummary().catch(console.error);
+  setInterval(() => updateStatus().catch(console.error), 5000);
+  setInterval(() => refreshCandidates(false).catch(console.error), 60000);
+  setInterval(() => refreshInvestmentTabs().catch(console.error), 15000);
+  setInterval(() => refreshPriceChart().catch(console.error), 60000);
+  setInterval(() => refreshTradeHistory().catch(console.error), 30000);
+  setInterval(() => refreshAccountSummary().catch(console.error), 30000);
+  window.addEventListener('resize', () => refreshPriceChart().catch(console.error));
+})();
+</script>
+
+<!-- Codex Auth Modal -->
+{% if user and (user.get('is_owner') or user.get('role') == 'admin') %}
+<div id="codex-auth-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;width:min(640px,95vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.3);overflow:hidden;">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+      <strong style="font-size:1.05em;">Codex - Re-authenticate</strong>
+      <button onclick="closeCodexAuth()" style="background:none;border:none;font-size:1.4em;cursor:pointer;color:#666;">&times;</button>
+    </div>
+    <div style="padding:14px 20px 10px;">
+      <p style="margin:0 0 10px;color:#555;font-size:.9em;">The Codex CLI will start below. If your session has expired, a <strong>device code</strong> will appear; open the link, enter the code, then come back.</p>
+      <div id="codex-auth-device-box" style="display:none;margin-bottom:12px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:6px;color:#166534;">Open this URL to authenticate:</div>
+        <a id="codex-auth-url" href="#" target="_blank" rel="noopener" style="color:#1d4ed8;word-break:break-all;font-size:.92em;"></a>
+        <div style="margin-top:8px;font-size:.9em;color:#166534;">Enter code: <code id="codex-auth-code" style="background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:1em;letter-spacing:.08em;"></code>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('codex-auth-code').textContent)" style="margin-left:8px;padding:1px 8px;font-size:.8em;border:1px solid #86efac;border-radius:4px;background:#fff;cursor:pointer;">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div id="codex-auth-log" style="flex:1;overflow-y:auto;background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:.82em;padding:10px 14px;min-height:160px;white-space:pre-wrap;word-break:break-all;"></div>
+    <div style="padding:10px 20px;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;">
+      <span id="codex-auth-status-label" style="flex:1;font-size:.85em;color:#666;">Waiting…</span>
+      <button id="codex-auth-cancel-btn" onclick="cancelCodexAuth()" style="padding:5px 14px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:.85em;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  let _authSessionId = null;
+  let _authPollTimer = null;
+  const URL_RE = /https?:\/\/[^\s"'<>]+/i;
+  const CODE_RE = /(?:user[\s_-]?code|enter[^:]*code|code)[:\s]+([A-Z0-9-]{6,16})/i;
+
+  function _log(text, color) {
+    const el = document.getElementById('codex-auth-log');
+    if (!el) return;
+    const span = document.createElement('span');
+    if (color) span.style.color = color;
+    span.textContent = text + '\n';
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function _detectDeviceFlow(line) {
+    const urlM = URL_RE.exec(line);
+    if (urlM) {
+      const box = document.getElementById('codex-auth-device-box');
+      const urlEl = document.getElementById('codex-auth-url');
+      if (box && urlEl) { box.style.display = 'block'; urlEl.href = urlM[0]; urlEl.textContent = urlM[0]; }
+    }
+    const codeM = CODE_RE.exec(line);
+    if (codeM) {
+      const codeEl = document.getElementById('codex-auth-code');
+      if (codeEl) codeEl.textContent = codeM[1];
+    }
+  }
+
+  window.openCodexAuth = async function() {
+    // Reset UI
+    _lastLineCount = 0;
+    document.getElementById('codex-auth-log').textContent = '';
+    document.getElementById('codex-auth-device-box').style.display = 'none';
+    document.getElementById('codex-auth-url').href = '#';
+    document.getElementById('codex-auth-url').textContent = '';
+    document.getElementById('codex-auth-code').textContent = '';
+    document.getElementById('codex-auth-status-label').textContent = 'Sending request to daemon…';
+    document.getElementById('codex-auth-modal').style.display = 'flex';
+
+    try {
+      const r = await fetch(`${API_BASE}/api/codex/reauth`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': SESSION_CSRF_TOKEN } });
+      const data = await r.json();
+      if (data.error) { _log('Error: ' + data.error, '#f87171'); return; }
+      _log('Request queued. The daemon will start the Codex CLI…', '#94a3b8');
+      _log('If authentication is required, a device code URL will appear below.', '#94a3b8');
+      _pollCodexAuth();
+    } catch(e) {
+      _log('Failed to queue request: ' + e, '#f87171');
+    }
+  };
+
+  let _lastLineCount = 0;
+
+  function _pollCodexAuth() {
+    if (_authPollTimer) clearTimeout(_authPollTimer);
+    _authPollTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/codex/reauth/status`, { credentials: 'include' });
+        const data = await r.json();
+        const allLines = data.lines || [];
+        // Only render new lines
+        for (let i = _lastLineCount; i < allLines.length; i++) {
+          const item = allLines[i];
+          const line = item.line || '';
+          _log(line, item.src === 'err' ? '#fbbf24' : '#e2e8f0');
+          _detectDeviceFlow(line);
+        }
+        _lastLineCount = allLines.length;
+        if (data.done) {
+          const ok = data.exit_code === 0;
+          document.getElementById('codex-auth-status-label').textContent = ok ? 'Authenticated successfully!' : `Process exited (code ${data.exit_code ?? '?'})`;
+          _log(ok ? '\nDone. Codex CLI is authenticated.' : `\nProcess finished (code ${data.exit_code ?? '?'}).`, ok ? '#4ade80' : '#94a3b8');
+        } else if (data.status === 'pending') {
+          document.getElementById('codex-auth-status-label').textContent = 'Waiting for daemon to start the CLI…';
+          _pollCodexAuth();
+        } else {
+          document.getElementById('codex-auth-status-label').textContent = 'Waiting for authentication…';
+          _pollCodexAuth();
+        }
+      } catch(e) {
+        _log('Poll error: ' + e, '#f87171');
+        _pollCodexAuth();
+      }
+    }, 1500);
+  }
+
+  window.cancelCodexAuth = async function() {
+    clearTimeout(_authPollTimer);
+    _lastLineCount = 0;
+      try { await fetch(`${API_BASE}/api/codex/reauth/abort`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': SESSION_CSRF_TOKEN } }); } catch(_) {}
+    closeCodexAuth();
+  };
+
+  window.closeCodexAuth = function() {
+    clearTimeout(_authPollTimer);
+    _lastLineCount = 0;
+    document.getElementById('codex-auth-modal').style.display = 'none';
+  };
+
+  // Close on backdrop click
+  document.getElementById('codex-auth-modal').addEventListener('click', function(e) {
+    if (e.target === this) cancelCodexAuth();
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

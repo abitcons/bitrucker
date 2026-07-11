@@ -1,0 +1,67 @@
+{% extends "saas_base.html" %}
+{% block title %}Security | BitRucker{% endblock %}
+{% block heading %}Account Security{% endblock %}
+{% block content %}
+<section class="content-grid">
+  <article class="panel-card">
+    <span class="eyebrow">MULTI-FACTOR AUTHENTICATION</span>
+    {% if user.mfa_enabled_at %}
+      <h2>Authenticator enabled</h2>
+      <p class="status-chip live">PROTECTED</p>
+      <p>Enabled {{ user.mfa_enabled_at[:16] }}. MFA is required at sign-in and before trading actions.</p>
+    {% elif mfa_setup %}
+      <h2>Finish authenticator setup</h2>
+      <p>Add this secret to a TOTP authenticator, then enter the current six-digit code.</p>
+      <div style="padding:12px;background:#f3f7f6;border-radius:8px;font-family:Consolas,monospace;word-break:break-all;">{{ mfa_setup.secret }}</div>
+      <details style="margin-top:10px;"><summary>Authenticator URI</summary><code style="word-break:break-all;">{{ mfa_setup.otpauth_uri }}</code></details>
+      <form method="post" action="{{ url_for('saas_mfa_enable') }}" class="form-stack" style="margin-top:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Six-digit code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" required></label>
+        <button class="primary-button" type="submit">Verify and enable MFA</button>
+      </form>
+    {% else %}
+      <h2>Authenticator not enabled</h2>
+      <p class="status-chip locked">ACTION REQUIRED</p>
+      <p>Use any standards-compatible TOTP authenticator. Privileged accounts block public launch until MFA is enabled.</p>
+      <form method="post" action="{{ url_for('saas_mfa_start') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="primary-button" type="submit">Start MFA setup</button>
+      </form>
+    {% endif %}
+  </article>
+
+  <article class="panel-card wide">
+    <span class="eyebrow">EXCHANGE KEY SAFETY</span>
+    <h2>Use trade-only credentials</h2>
+    <ul>
+      <li>Disable withdrawal and transfer permissions.</li>
+      <li>Allow read and spot trading only.</li>
+      <li>Restrict the key to the server IP shown on the exchange setup page.</li>
+      <li>Use a unique key for BitRucker and enable exchange-side login/trade alerts.</li>
+      <li>Revoke the key immediately if the server, email account, or authenticator is compromised.</li>
+    </ul>
+  </article>
+</section>
+
+{% if recovery_codes %}
+<section class="panel-card wide" style="margin-top:16px;border-color:#c27a18;">
+  <span class="eyebrow">SAVE ONCE</span>
+  <h2>Recovery codes</h2>
+  <p>Store these offline. Each code works once and will not be shown again.</p>
+  <pre style="padding:16px;background:#17211f;color:white;border-radius:8px;white-space:pre-wrap;">{{ recovery_codes|join('\n') }}</pre>
+</section>
+{% endif %}
+
+{% if user.mfa_enabled_at %}
+<section class="panel-card wide" style="margin-top:16px;">
+  <span class="eyebrow">DANGER ZONE</span>
+  <h2>Disable MFA</h2>
+  <form method="post" action="{{ url_for('saas_mfa_disable') }}" class="form-stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+    <label>Authenticator or recovery code<input name="code" autocomplete="one-time-code" required></label>
+    <button class="secondary-button" type="submit">Disable MFA</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

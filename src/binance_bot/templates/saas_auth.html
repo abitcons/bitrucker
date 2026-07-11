@@ -1,0 +1,70 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ 'Create account' if mode == 'signup' else 'Sign in' }} | BitRucker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='saas.css', v='20260627-2') }}">
+  <style>
+    body.auth-body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; font-family: "Aptos", "Segoe UI", sans-serif; background: linear-gradient(135deg, #eaf5f1, #f7efe2); color: #17211f; }
+    .auth-card { width: min(460px, 100%); padding: 26px; background: #fff; border: 1px solid #dce6e2; border-radius: 10px; box-shadow: 0 18px 45px rgba(8, 33, 29, 0.12); }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(135deg, #0f766e, #c27a18); }
+    .brand-mark svg { width: 24px; height: 24px; display: block; }
+    .auth-brand { margin-bottom: 22px; }
+    .form-stack { display: grid; gap: 12px; }
+    .form-stack label { display: grid; gap: 6px; color: #65736f; font-weight: 700; }
+    .form-stack .legal-check { grid-template-columns: auto 1fr; align-items: start; font-weight: 500; line-height: 1.45; }
+    .form-stack .legal-check input { width: auto; margin-top: 3px; }
+    input { width: 100%; border: 1px solid #dce6e2; border-radius: 8px; padding: 10px 11px; font: inherit; }
+    .primary-button { border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 800; cursor: pointer; color: white; background: #0f766e; }
+  </style>
+</head>
+<body class="auth-body">
+  <main class="auth-card">
+    <div class="brand auth-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6" y="4" width="20" height="24" rx="4" fill="currentColor" opacity="0.9"/>
+          <text x="16" y="22" font-size="18" font-weight="900" text-anchor="middle" fill="white" font-family="serif">B</text>
+          <rect x="11" y="2" width="2.5" height="28" rx="1" fill="white"/>
+          <rect x="18.5" y="2" width="2.5" height="28" rx="1" fill="white"/>
+        </svg>
+      </span>
+      <div>
+        <strong>BitRucker</strong>
+        <small>Algorithmic bot access</small>
+      </div>
+    </div>
+    <h1>{{ 'Start your 3 day trial' if mode == 'signup' else 'Welcome back' }}</h1>
+    <p>{{ 'Connect Binance, whitelist our server IP, and evaluate Swing Bot before subscribing.' if mode == 'signup' else 'Sign in to manage bot access, billing, and Binance setup.' }}</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('signup_post') if mode == 'signup' else url_for('login_post') }}" class="form-stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label>Email or username<input name="email" type="text" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="{{ 'new-password' if mode == 'signup' else 'current-password' }}" minlength="10" required></label>
+      {% if mode == 'signup' %}
+        <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" required></label>
+        <label class="legal-check">
+          <input name="accept_terms" type="checkbox" value="yes" required>
+          <span>I accept the <a href="{{ url_for('terms') }}" target="_blank" rel="noopener">Terms</a>, <a href="{{ url_for('privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>, and <a href="{{ url_for('risk_disclosure') }}" target="_blank" rel="noopener">Risk Disclosure</a> (version {{ legal_version }}). I understand automated trading can lose money.</span>
+        </label>
+      {% endif %}
+      <button class="primary-button" type="submit">{{ 'Create account' if mode == 'signup' else 'Sign in' }}</button>
+    </form>
+    <p class="auth-switch">
+      {% if mode == 'signup' %}
+        Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+      {% else %}
+        New investor? <a href="{{ url_for('signup') }}">Start free trial</a>
+      {% endif %}
+    </p>
+    <p class="auth-switch"><a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('risk_disclosure') }}">Risk Disclosure</a></p>
+  </main>
+</body>
+</html>

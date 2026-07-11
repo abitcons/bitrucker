@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="BitRucker is an explainable, safety-gated paper trading agent for supported Binance and Bitget crypto and tokenized-market pairs.">
+  <title>BitRucker | Explainable multi-asset trading automation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="wordmark" href="{{ url_for('index') }}" aria-label="BitRucker home">
+      <span class="brand-mark" aria-hidden="true">BR</span>
+      <span><strong>BitRucker</strong><small>Controlled automation</small></span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#safety">Safety</a>
+      <a href="#markets">Markets</a>
+      <a href="#beta">Beta</a>
+      <a href="{{ url_for('login') }}">Sign in</a>
+      {% if public_signup_enabled %}<a class="nav-cta" href="{{ url_for('signup') }}">Start paper trial</a>{% endif %}
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Private beta · customer orders are paper-only</span>
+        <h1>Understand every trade idea before real money is involved.</h1>
+        <p class="hero-lead">BitRucker ranks exchange-supported markets, explains its signals, and applies deterministic risk gates. Every customer starts in an isolated paper fleet; customer live-order execution is disabled during beta.</p>
+        <div class="hero-actions">
+          {% if public_signup_enabled %}<a class="button primary" href="{{ url_for('signup') }}">Start 3-day paper trial</a>{% endif %}
+          <a class="button secondary" href="#how-it-works">See how it works</a>
+        </div>
+        <p class="risk-line">Trading can lose money. BitRucker does not promise returns and is not investment advice.</p>
+      </div>
+      <div class="signal-card" aria-label="Example explainable decision">
+        <div class="signal-head"><span>Decision preview</span><strong>HOLD · MONITOR</strong></div>
+        <dl>
+          <div><dt>Instrument</dt><dd>Exchange-supported pair</dd></div>
+          <div><dt>Signal context</dt><dd>RSI · volatility · liquidity</dd></div>
+          <div><dt>Execution</dt><dd class="paper">PAPER TRADING</dd></div>
+          <div><dt>Risk gate</dt><dd class="pass">Allocation within limit</dd></div>
+        </dl>
+        <p>Recommendations are visible and inspectable. Deterministic policy—not an unchecked AI response—controls whether an entry is allowed.</p>
+      </div>
+    </section>
+
+    <section class="proof-strip" aria-label="Product capabilities">
+      <div><strong>2</strong><span>exchange integrations</span></div>
+      <div><strong>Crypto + tokenized markets</strong><span>classified from exchange metadata</span></div>
+      <div><strong>Paper first</strong><span>isolated per customer</span></div>
+      <div><strong>Fail closed</strong><span>public launch-readiness gate</span></div>
+    </section>
+
+    <section class="section" id="how-it-works">
+      <div class="section-heading">
+        <span class="eyebrow">How it works</span>
+        <h2>From supported pair to controlled decision.</h2>
+      </div>
+      <div class="steps">
+        <article><span>01</span><h3>Select the exchange</h3><p>Pair discovery comes from the selected exchange's current spot instrument catalog, including Bitget-supported Reality instruments.</p></article>
+        <article><span>02</span><h3>Inspect the evidence</h3><p>See volatility, RSI, spread, depth, fees, media context, position cost basis, and the reason an entry is allowed or blocked.</p></article>
+        <article><span>03</span><h3>Prove it in paper mode</h3><p>Run an isolated customer fleet without sending live orders. State, pair limits, and exchange credentials stay separated by account.</p></article>
+      </div>
+    </section>
+
+    <section class="section safety-section" id="safety">
+      <div class="section-heading">
+        <span class="eyebrow">Built to refuse unsafe actions</span>
+        <h2>Safety controls are product features.</h2>
+        <p>Automation is useful only when it can stop, explain itself, and recover cleanly.</p>
+      </div>
+      <div class="feature-grid">
+        <article><h3>Trade-only key validation</h3><p>Connections are checked with read-only calls. Withdrawal, transfer, missing trade permission, and missing IP restriction are rejected.</p></article>
+        <article><h3>Tenant isolation</h3><p>Customer credentials, runtime state, bots, and pair registries use separate namespaces. Server-owner keys cannot be inherited.</p></article>
+        <article><h3>Emergency entry lock</h3><p>An audited, durable switch blocks new entries while leaving stop, close, and protective-exit paths available.</p></article>
+        <article><h3>Account protection</h3><p>TOTP MFA, one-time recovery codes, login throttling, CSRF protection, secure cookies, and durable action auditing are built in.</p></article>
+      </div>
+    </section>
+
+    <section class="section" id="markets">
+      <div class="section-heading">
+        <span class="eyebrow">Multi-asset, exchange-aware</span>
+        <h2>Use the pair names your selected exchange supports.</h2>
+      </div>
+      <div class="market-grid">
+        <article><span class="market-label">Binance</span><h3>Crypto spot</h3><p>Exchange-resolved stablecoin pairs with liquidity, fee, order-size, and symbol-filter checks.</p></article>
+        <article><span class="market-label">Bitget</span><h3>Crypto spot</h3><p>Bitget-native instrument discovery and order routing instead of assuming Binance naming or capabilities.</p></article>
+        <article><span class="market-label">Bitget Reality</span><h3>Supported tokenized markets</h3><p>Stock-ticker aliases map to canonical Reality symbols and receive stock-specific context. These tokens are not direct ownership of the underlying shares.</p></article>
+      </div>
+    </section>
+
+    <section class="section beta-card" id="beta">
+      <div>
+        <span class="eyebrow">Transparent beta</span>
+        <h2>Start with evidence, not promises.</h2>
+        {% if public_signup_enabled %}
+        <p>Three-day isolated paper trial. Beta plan: {{ monthly_price }} USDT per month after the trial. Payment activation is manually verified while production billing integration is completed.</p>
+        {% else %}
+        <p>Private beta access is currently invite-only while legal review, backup drills, and production billing integration are completed. Approved testers receive an isolated paper account; customer live orders remain disabled.</p>
+        {% endif %}
+      </div>
+      <div class="beta-actions">
+        {% if public_signup_enabled %}<a class="button primary" href="{{ url_for('signup') }}">Create paper account</a>{% endif %}
+        <a class="button secondary" href="{{ url_for('risk_disclosure') }}">Read risk disclosure</a>
+        <a class="status-link" href="{{ url_for('health_ready') }}">View launch-readiness status</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 BitRucker. Private beta.</span>
+    <nav aria-label="Legal">
+      <a href="{{ url_for('terms') }}">Terms</a>
+      <a href="{{ url_for('privacy') }}">Privacy</a>
+      <a href="{{ url_for('risk_disclosure') }}">Risk disclosure</a>
+    </nav>
+  </footer>
+</body>
+</html>
